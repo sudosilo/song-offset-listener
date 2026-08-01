@@ -41,6 +41,32 @@ const statusEl = document.getElementById('status');
 
 let anchor = null;
 let lastFetchedAt = 0;
+let clockOffsetMs = 0;
+
+async function calibrateClock() {
+  const samples = [];
+  for (let i = 0; i < 5; i++) {
+    const t0 = Date.now();
+    try {
+      const res = await fetch('/api/time', { cache: 'no-store' });
+      const data = await res.json();
+      const t1 = Date.now();
+      const rtt = t1 - t0;
+      const estimatedServerTimeAtT1 = data.serverTime + rtt / 2;
+      samples.push({ offset: estimatedServerTimeAtT1 - t1, rtt });
+    } catch (err) {
+      // skip failed sample
+    }
+  }
+  if (samples.length === 0) return;
+  samples.sort((a, b) => a.rtt - b.rtt);
+  clockOffsetMs = samples[0].offset;
+  statusEl.textContent = 'clock calibrated';
+}
+
+function now() {
+  return Date.now() + clockOffsetMs;
+}
 
 async function pollAnchor() {
   try {
@@ -62,7 +88,7 @@ async function pollAnchor() {
 
 function tick() {
   if (anchor) {
-    const elapsed = (Date.now() - anchor.epochMs) / 1000;
+    const elapsed = (now() - anchor.epochMs) / 1000;
     clockEl.textContent = formatOffset(elapsed);
   }
   requestAnimationFrame(tick);
@@ -75,8 +101,10 @@ function formatOffset(seconds) {
   return m + ':' + s.padStart(4, '0');
 }
 
+calibrateClock();
 pollAnchor();
 setInterval(pollAnchor, 2000);
+setInterval(calibrateClock, 30000);
 tick();
 </script>
 </body>
