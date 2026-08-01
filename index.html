@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Song Offset Listener</title>
+<style>
+  body {
+    font-family: Georgia, serif;
+    background: #ffffff;
+    color: #111;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  h1 { font-size: 1.2rem; color: #1a4fa0; margin-bottom: 8px; }
+  #listenBtn {
+    font-size: 1.4rem;
+    padding: 20px 40px;
+    border-radius: 12px;
+    border: 2px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
+  #listenBtn:active { background: #1a4fa0; color: #fff; }
+  #status { margin-top: 20px; font-size: 1rem; color: #444; min-height: 1.2em; }
+  #result {
+    margin-top: 20px;
+    border: 2px solid #1a4fa0;
+    border-radius: 10px;
+    padding: 16px 24px;
+    display: none;
+    max-width: 90%;
+  }
+  #result h2 { margin: 0 0 6px 0; font-size: 1.3rem; }
+  #result .artist { color: #555; margin-bottom: 12px; }
+  #result .offset { font-size: 2rem; font-variant-numeric: tabular-nums; color: #1a4fa0; }
+  #result .label { font-size: 0.85rem; color: #777; }
+</style>
+</head>
+<body>
+  <h1>Song Offset Listener</h1>
+  <button id="listenBtn">Listen</button>
+  <div id="status"></div>
+  <div id="result">
+    <h2 id="songTitle"></h2>
+    <div class="artist" id="songArtist"></div>
+    <div class="offset" id="songOffset"></div>
+    <div class="label">matched offset into track</div>
+  </div>
+
+<script>
+const listenBtn = document.getElementById('listenBtn');
+const statusEl = document.getElementById('status');
+const resultEl = document.getElementById('result');
+const songTitle = document.getElementById('songTitle');
+const songArtist = document.getElementById('songArtist');
+const songOffset = document.getElementById('songOffset');
+
+const RECORD_MS = 9000;
+
+listenBtn.addEventListener('click', startListen);
+
+async function startListen() {
+  resultEl.style.display = 'none';
+  listenBtn.disabled = true;
+  statusEl.textContent = 'Requesting microphone...';
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    statusEl.textContent = 'Microphone permission denied or unavailable.';
+    listenBtn.disabled = false;
+    return;
+  }
+
+  const chunks = [];
+  const captureStartedAt = Date.now();
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+  recorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    statusEl.textContent = 'Identifying...';
+    const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+
+    try {
+      const form = new FormData();
+      form.append('audio', blob, 'clip.webm');
+      form.append('capturedAt', String(captureStartedAt));
+      form.append('clipDurationMs', String(RECORD_MS));
+
+      const res = await fetch('/api/recognize', { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (data.error) {
+        statusEl.textContent = 'No match: ' + data.error;
+        listenBtn.disabled = false;
+        return;
+      }
+
+      songTitle.textContent = data.title;
+      songArtist.textContent = data.artist;
+      songOffset.textContent = formatOffset(data.offsetSeconds);
+      resultEl.style.display = 'block';
+      statusEl.textContent = '';
+    } catch (err) {
+      statusEl.textContent = 'Request failed. Check connection.';
+    }
+    listenBtn.disabled = false;
+  };
+
+  recorder.start();
+  statusEl.textContent = 'Listening...';
+  setTimeout(() => recorder.stop(), RECORD_MS);
+}
+
+function formatOffset(seconds) {
+  if (seconds === null || seconds === undefined) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = (seconds % 60).toFixed(1);
+  return m + ':' + s.padStart(4, '0');
+}
+</script>
+</body>
+</html>

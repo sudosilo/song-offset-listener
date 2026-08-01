@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Song Offset Listener - View</title>
+<style>
+  body {
+    font-family: Georgia, serif;
+    background: #ffffff;
+    color: #111;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  h1 { font-size: 1rem; color: #777; margin-bottom: 4px; }
+  #title { font-size: 1.6rem; color: #1a4fa0; margin-bottom: 4px; }
+  #artist { font-size: 1.1rem; color: #555; margin-bottom: 20px; }
+  #clock { font-size: 4rem; font-variant-numeric: tabular-nums; color: #1a4fa0; }
+  #status { margin-top: 16px; font-size: 0.9rem; color: #999; }
+</style>
+</head>
+<body>
+  <h1>watching shared anchor</h1>
+  <div id="title">--</div>
+  <div id="artist"></div>
+  <div id="clock">--:--</div>
+  <div id="status">waiting for host...</div>
+
+<script>
+const titleEl = document.getElementById('title');
+const artistEl = document.getElementById('artist');
+const clockEl = document.getElementById('clock');
+const statusEl = document.getElementById('status');
+
+let anchor = null;
+let lastFetchedAt = 0;
+
+async function pollAnchor() {
+  try {
+    const res = await fetch('/api/anchor', { cache: 'no-store' });
+    const data = await res.json();
+    if (!data.error) {
+      anchor = data;
+      lastFetchedAt = Date.now();
+      titleEl.textContent = anchor.title;
+      artistEl.textContent = anchor.artist;
+      statusEl.textContent = 'synced';
+    } else if (!anchor) {
+      statusEl.textContent = data.error;
+    }
+  } catch (err) {
+    statusEl.textContent = 'connection lost, retrying...';
+  }
+}
+
+function tick() {
+  if (anchor) {
+    const elapsed = (Date.now() - anchor.epochMs) / 1000;
+    clockEl.textContent = formatOffset(elapsed);
+  }
+  requestAnimationFrame(tick);
+}
+
+function formatOffset(seconds) {
+  if (seconds < 0) seconds = 0;
+  const m = Math.floor(seconds / 60);
+  const s = (seconds % 60).toFixed(1);
+  return m + ':' + s.padStart(4, '0');
+}
+
+pollAnchor();
+setInterval(pollAnchor, 2000);
+tick();
+</script>
+</body>
+</html>
