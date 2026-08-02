@@ -24,6 +24,19 @@
   #artist { font-size: 1.1rem; color: #555; margin-bottom: 20px; }
   #clock { font-size: 4rem; font-variant-numeric: tabular-nums; color: #1a4fa0; }
   #status { margin-top: 16px; font-size: 0.9rem; color: #999; }
+  #joinBtn {
+    margin-top: 24px;
+    font-size: 1.2rem;
+    padding: 14px 32px;
+    border-radius: 12px;
+    border: 2px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
+  #joinBtn:disabled { opacity: 0.4; }
+  #player { margin-top: 20px; width: 1px; height: 1px; overflow: hidden; }
+  #countdown { margin-top: 12px; font-size: 1.4rem; color: #1a4fa0; min-height: 1.6rem; }
 </style>
 </head>
 <body>
@@ -32,12 +45,22 @@
   <div id="artist"></div>
   <div id="clock">--:--</div>
   <div id="status">waiting for host...</div>
+  <button id="joinBtn" disabled>Join Sync</button>
+  <div id="countdown"></div>
+  <div id="player"></div>
 
 <script>
 const titleEl = document.getElementById('title');
 const artistEl = document.getElementById('artist');
 const clockEl = document.getElementById('clock');
 const statusEl = document.getElementById('status');
+const joinBtn = document.getElementById('joinBtn');
+const countdownEl = document.getElementById('countdown');
+
+let ytPlayer = null;
+let ytReady = false;
+let scheduledFireEpoch = null;
+let fireTimer = null;
 
 let anchor = null;
 let lastFetchedAt = 0;
@@ -78,12 +101,60 @@ async function pollAnchor() {
       titleEl.textContent = anchor.title;
       artistEl.textContent = anchor.artist;
       statusEl.textContent = 'synced';
+      joinBtn.disabled = !anchor.videoId;
     } else if (!anchor) {
       statusEl.textContent = data.error;
     }
   } catch (err) {
     statusEl.textContent = 'connection lost, retrying...';
   }
+}
+
+function loadYouTubeApi() {
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.body.appendChild(tag);
+}
+
+window.onYouTubeIframeAPIReady = function () {
+  ytPlayer = new YT.Player('player', {
+    height: '1',
+    width: '1',
+    playerVars: { controls: 0 },
+    events: {
+      onReady: () => { ytReady = true; }
+    }
+  });
+};
+
+joinBtn.addEventListener('click', startSyncJoin);
+
+function startSyncJoin() {
+  if (!anchor || !anchor.videoId || !ytReady) {
+    countdownEl.textContent = 'player not ready yet, try again in a moment';
+    return;
+  }
+
+  if (fireTimer) clearTimeout(fireTimer);
+
+  const leadMs = 4000;
+  scheduledFireEpoch = now() + leadMs;
+  const targetVideoPosition = anchor.offsetSeconds + (scheduledFireEpoch - anchor.epochMs) / 1000;
+
+  ytPlayer.cueVideoById(anchor.videoId, Math.max(targetVideoPosition, 0));
+
+  const tickCountdown = () => {
+    const remainingMs = scheduledFireEpoch - now();
+    if (remainingMs <= 0) {
+      ytPlayer.seekTo(targetVideoPosition, true);
+      ytPlayer.playVideo();
+      countdownEl.textContent = 'live';
+      return;
+    }
+    countdownEl.textContent = 'starting in ' + (remainingMs / 1000).toFixed(1) + 's';
+    fireTimer = setTimeout(tickCountdown, 50);
+  };
+  tickCountdown();
 }
 
 function tick() {
@@ -102,6 +173,7 @@ function formatOffset(seconds) {
 }
 
 calibrateClock();
+loadYouTubeApi();
 pollAnchor();
 setInterval(pollAnchor, 2000);
 setInterval(calibrateClock, 30000);
