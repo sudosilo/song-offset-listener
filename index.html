@@ -43,6 +43,21 @@
   #result .artist { color: #555; margin-bottom: 12px; }
   #result .offset { font-size: 2rem; font-variant-numeric: tabular-nums; color: #1a4fa0; }
   #result .label { font-size: 0.85rem; color: #777; }
+  #manualSection { margin-top: 30px; width: 100%; max-width: 420px; }
+  #manualToggle { background: none; border: none; color: #1a4fa0; font-size: 0.95rem; text-decoration: underline; cursor: pointer; }
+  #searchBox { display: none; margin-top: 16px; }
+  #searchInput { width: 70%; padding: 10px; font-size: 1rem; border: 2px solid #1a4fa0; border-radius: 8px; font-family: Georgia, serif; }
+  #searchBtn { padding: 10px 16px; font-size: 1rem; border: 2px solid #1a4fa0; background: #eaf1fb; color: #1a4fa0; border-radius: 8px; }
+  #searchResults { margin-top: 16px; text-align: left; }
+  .searchItem { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid #ddd; cursor: pointer; }
+  .searchItem img { width: 60px; height: 45px; border-radius: 4px; }
+  .searchItem .meta { font-size: 0.9rem; }
+  .searchItem .meta .t { color: #111; }
+  .searchItem .meta .c { color: #777; font-size: 0.8rem; }
+  #broadcastPanel { display: none; margin-top: 20px; border: 2px solid #1a4fa0; border-radius: 10px; padding: 16px; }
+  #hostPlayer { width: 100%; max-width: 320px; aspect-ratio: 16/9; margin: 12px auto; }
+  #broadcastBtn { padding: 14px 28px; font-size: 1.1rem; border-radius: 10px; border: 2px solid #1a4fa0; background: #eaf1fb; color: #1a4fa0; cursor: pointer; }
+  #broadcastStatus { margin-top: 10px; font-size: 0.9rem; color: #777; }
 </style>
 </head>
 <body>
@@ -54,6 +69,22 @@
     <div class="artist" id="songArtist"></div>
     <div class="offset" id="songOffset"></div>
     <div class="label">matched offset into track</div>
+    <div class="label" id="videoInfo" style="margin-top:8px;"></div>
+  </div>
+
+  <div id="manualSection">
+    <button id="manualToggle">search a video manually instead</button>
+    <div id="searchBox">
+      <input id="searchInput" type="text" placeholder="song or artist">
+      <button id="searchBtn">Search</button>
+      <div id="searchResults"></div>
+    </div>
+    <div id="broadcastPanel">
+      <div id="chosenTitle" style="color:#1a4fa0;font-size:1.1rem;"></div>
+      <div id="hostPlayer"></div>
+      <button id="broadcastBtn">Play and Broadcast</button>
+      <div id="broadcastStatus"></div>
+    </div>
   </div>
 
 <script>
@@ -63,6 +94,7 @@ const resultEl = document.getElementById('result');
 const songTitle = document.getElementById('songTitle');
 const songArtist = document.getElementById('songArtist');
 const songOffset = document.getElementById('songOffset');
+const videoInfo = document.getElementById('videoInfo');
 
 const RECORD_MS = 9000;
 
@@ -112,6 +144,9 @@ async function startListen() {
       songTitle.textContent = data.title;
       songArtist.textContent = data.artist;
       songOffset.textContent = formatOffset(data.offsetSeconds);
+      videoInfo.textContent = data.videoId
+        ? 'video: ' + data.videoId + (data.videoDurationSeconds ? ' (' + formatOffset(data.videoDurationSeconds) + ' long)' : '')
+        : 'no youtube match found';
       resultEl.style.display = 'block';
       statusEl.textContent = '';
     } catch (err) {
@@ -130,6 +165,150 @@ function formatOffset(seconds) {
   const m = Math.floor(seconds / 60);
   const s = (seconds % 60).toFixed(1);
   return m + ':' + s.padStart(4, '0');
+}
+
+const manualToggle = document.getElementById('manualToggle');
+const searchBox = document.getElementById('searchBox');
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const searchResults = document.getElementById('searchResults');
+const broadcastPanel = document.getElementById('broadcastPanel');
+const chosenTitle = document.getElementById('chosenTitle');
+const broadcastBtn = document.getElementById('broadcastBtn');
+const broadcastStatus = document.getElementById('broadcastStatus');
+
+let hostPlayer = null;
+let hostPlayerReady = false;
+let chosenVideo = null;
+let broadcasting = false;
+let broadcastTimer = null;
+
+manualToggle.addEventListener('click', () => {
+  const showing = searchBox.style.display === 'block';
+  searchBox.style.display = showing ? 'none' : 'block';
+});
+
+searchBtn.addEventListener('click', runSearch);
+
+async function runSearch() {
+  const q = searchInput.value.trim();
+  if (!q) return;
+  searchResults.innerHTML = 'searching...';
+  try {
+    const res = await fetch('/api/youtube-search?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    renderResults(data.results || []);
+  } catch (err) {
+    searchResults.innerHTML = 'search failed';
+  }
+}
+
+function renderResults(results) {
+  if (results.length === 0) {
+    searchResults.innerHTML = 'no results';
+    return;
+  }
+  searchResults.innerHTML = '';
+  results.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'searchItem';
+    row.innerHTML = '<img src="' + (r.thumbnail || '') + '">' +
+      '<div class="meta"><div class="t">' + escapeHtml(r.title) + '</div>' +
+      '<div class="c">' + escapeHtml(r.channel) + '</div></div>';
+    row.addEventListener('click', () => selectVideo(r));
+    searchResults.appendChild(row);
+  });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+function selectVideo(video) {
+  chosenVideo = video;
+  chosenTitle.textContent = video.title;
+  broadcastPanel.style.display = 'block';
+  searchBox.style.display = 'none';
+
+  if (!hostPlayer) {
+    loadYouTubeApiHost();
+  } else {
+    hostPlayer.cueVideoById(video.videoId);
+  }
+}
+
+function loadYouTubeApiHost() {
+  if (window.YT && window.YT.Player) {
+    createHostPlayer();
+    return;
+  }
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.body.appendChild(tag);
+  window.onYouTubeIframeAPIReady = createHostPlayer;
+}
+
+function createHostPlayer() {
+  hostPlayer = new YT.Player('hostPlayer', {
+    height: '180',
+    width: '320',
+    videoId: chosenVideo.videoId,
+    playerVars: { controls: 1 },
+    events: {
+      onReady: () => { hostPlayerReady = true; }
+    }
+  });
+}
+
+broadcastBtn.addEventListener('click', () => {
+  if (!hostPlayerReady) {
+    broadcastStatus.textContent = 'player not ready yet';
+    return;
+  }
+  if (broadcasting) {
+    stopBroadcast();
+  } else {
+    startBroadcast();
+  }
+});
+
+function startBroadcast() {
+  hostPlayer.playVideo();
+  broadcasting = true;
+  broadcastBtn.textContent = 'Stop Broadcasting';
+  broadcastStatus.textContent = 'broadcasting...';
+  pushAnchor();
+  broadcastTimer = setInterval(pushAnchor, 2000);
+}
+
+function stopBroadcast() {
+  broadcasting = false;
+  broadcastBtn.textContent = 'Play and Broadcast';
+  broadcastStatus.textContent = 'stopped';
+  if (broadcastTimer) clearInterval(broadcastTimer);
+}
+
+async function pushAnchor() {
+  if (!hostPlayer || !chosenVideo) return;
+  const currentTime = hostPlayer.getCurrentTime();
+  const payload = {
+    title: chosenVideo.title,
+    artist: chosenVideo.channel,
+    videoId: chosenVideo.videoId,
+    offsetSeconds: currentTime,
+    epochMs: Date.now()
+  };
+  try {
+    await fetch('/api/anchor', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    broadcastStatus.textContent = 'broadcast failed, retrying next cycle';
+  }
 }
 </script>
 </body>
