@@ -37,6 +37,16 @@
   #joinBtn:disabled { opacity: 0.4; }
   #player { margin-top: 20px; width: 1px; height: 1px; overflow: hidden; }
   #countdown { margin-top: 12px; font-size: 1.4rem; color: #1a4fa0; min-height: 1.6rem; }
+  #nudgeRow button {
+    padding: 6px 12px;
+    font-size: 0.9rem;
+    border-radius: 8px;
+    border: 2px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
+  #nudgeValue { font-size: 0.95rem; }
 </style>
 </head>
 <body>
@@ -47,6 +57,14 @@
   <div id="status">waiting for host...</div>
   <button id="joinBtn" disabled>Join Sync</button>
   <div id="countdown"></div>
+  <div id="nudgeRow" style="margin-top:10px;">
+    <button id="nudgeBack">- 0.5s</button>
+    <span id="nudgeValue" style="margin:0 10px; color:#1a4fa0;">nudge 0.0s</span>
+    <button id="nudgeForward">+ 0.5s</button>
+    <button id="nudgeReset" style="margin-left:10px;">reset</button>
+    <button id="syncPauseBtn" style="margin-left:10px;">Pause</button>
+  </div>
+  <div style="margin-top:6px;"><a href="#" id="nudgeLogLink" style="font-size:0.8rem; color:#999;">log this offset for testing</a></div>
   <div id="player"></div>
 
 <script>
@@ -129,6 +147,8 @@ window.onYouTubeIframeAPIReady = function () {
 
 joinBtn.addEventListener('click', startSyncJoin);
 
+let syncLive = false;
+
 function startSyncJoin() {
   if (!anchor || !anchor.videoId || !ytReady) {
     countdownEl.textContent = 'player not ready yet, try again in a moment';
@@ -136,19 +156,29 @@ function startSyncJoin() {
   }
 
   if (fireTimer) clearTimeout(fireTimer);
+  syncLive = false;
 
   const leadMs = 4000;
   scheduledFireEpoch = now() + leadMs;
-  const targetVideoPosition = anchor.offsetSeconds + (scheduledFireEpoch - anchor.epochMs) / 1000;
+  const initialPosition = anchor.offsetSeconds + (scheduledFireEpoch - anchor.epochMs) / 1000 + (nudgeMs / 1000);
 
-  ytPlayer.cueVideoById(anchor.videoId, Math.max(targetVideoPosition, 0));
+  ytPlayer.cueVideoById(anchor.videoId, Math.max(initialPosition, 0));
 
   const tickCountdown = () => {
     const remainingMs = scheduledFireEpoch - now();
     if (remainingMs <= 0) {
-      ytPlayer.seekTo(targetVideoPosition, true);
+      const firePosition = anchor.offsetSeconds + (scheduledFireEpoch - anchor.epochMs) / 1000 + (nudgeMs / 1000);
+      ytPlayer.seekTo(Math.max(firePosition, 0), true);
       ytPlayer.playVideo();
       countdownEl.textContent = 'live';
+      syncLive = true;
+      logPlayEvent({
+        event: 'view_join_fire',
+        title: anchor.title,
+        videoId: anchor.videoId,
+        position: Math.max(firePosition, 0),
+        nudgeMs
+      });
       return;
     }
     countdownEl.textContent = 'starting in ' + (remainingMs / 1000).toFixed(1) + 's';
@@ -159,11 +189,89 @@ function startSyncJoin() {
 
 function tick() {
   if (anchor) {
-    const elapsed = (now() - anchor.epochMs) / 1000;
+    const elapsed = (now() - anchor.epochMs) / 1000 + (nudgeMs / 1000);
     clockEl.textContent = formatOffset(elapsed);
   }
   requestAnimationFrame(tick);
 }
+
+function getDeviceId() {
+  let id = localStorage.getItem('songsync:deviceId');
+  if (!id) {
+    id = 'phone-' + Math.random().toString(36).slice(2, 8);
+    localStorage.setItem('songsync:deviceId', id);
+  }
+  return id;
+}
+const deviceId = getDeviceId();
+
+async function logPlayEvent(details) {
+  try {
+    await fetch('/api/play-log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(Object.assign({ deviceId, playedAtEpochMs: Date.now() }, details))
+    });
+  } catch (err) {}
+}
+
+let nudgeMs = Number(localStorage.getItem('songsync:nudgeMs')) || 0;
+const nudgeValueEl = document.getElementById('nudgeValue');
+const nudgeBackBtn = document.getElementById('nudgeBack');
+const nudgeForwardBtn = document.getElementById('nudgeForward');
+const nudgeResetBtn = document.getElementById('nudgeReset');
+const syncPauseBtn = document.getElementById('syncPauseBtn');
+let syncPaused = false;
+
+function renderNudge() {
+  nudgeValueEl.textContent = 'nudge ' + (nudgeMs >= 0 ? '+' : '') + (nudgeMs / 1000).toFixed(1) + 's';
+}
+
+function setNudge(newValueMs) {
+  const deltaSeconds = (newValueMs - nudgeMs) / 1000;
+  nudgeMs = newValueMs;
+  localStorage.setItem('songsync:nudgeMs', String(nudgeMs));
+  renderNudge();
+  if (syncLive && ytPlayer) {
+    const newPos = Math.max(0, ytPlayer.getCurrentTime() + deltaSeconds);
+    ytPlayer.seekTo(newPos, true);
+  }
+}
+
+syncPauseBtn.addEventListener('click', () => {
+  if (!syncLive || !ytPlayer) return;
+  if (syncPaused) {
+    ytPlayer.playVideo();
+    syncPauseBtn.textContent = 'Pause';
+  } else {
+    ytPlayer.pauseVideo();
+    syncPauseBtn.textContent = 'Resume';
+  }
+  syncPaused = !syncPaused;
+});
+
+nudgeBackBtn.addEventListener('click', () => setNudge(nudgeMs - 500));
+nudgeForwardBtn.addEventListener('click', () => setNudge(nudgeMs + 500));
+nudgeResetBtn.addEventListener('click', () => setNudge(0));
+renderNudge();
+
+const nudgeLogLink = document.getElementById('nudgeLogLink');
+nudgeLogLink.addEventListener('click', async (e) => {
+  e.preventDefault();
+  const prevText = nudgeLogLink.textContent;
+  try {
+    await fetch('/api/nudge-log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nudgeMs, note: 'view page' })
+    });
+    nudgeLogLink.textContent = 'logged';
+    setTimeout(() => { nudgeLogLink.textContent = prevText; }, 1500);
+  } catch (err) {
+    nudgeLogLink.textContent = 'failed to log';
+    setTimeout(() => { nudgeLogLink.textContent = prevText; }, 1500);
+  }
+});
 
 function formatOffset(seconds) {
   if (seconds < 0) seconds = 0;

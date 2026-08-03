@@ -1,13 +1,7 @@
 export const config = { runtime: 'edge' };
 
-const LOG_KEY = 'songsync:log';
-const MAX_ENTRIES = 20;
-
-function redisHeaders() {
-  return {
-    Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}`
-  };
-}
+const KEY = 'songsync:playlog';
+const MAX_ENTRIES = 100;
 
 export default async function handler(request) {
   const base = process.env.UPSTASH_REDIS_REST_URL;
@@ -21,16 +15,12 @@ export default async function handler(request) {
 
   try {
     if (request.method === 'GET') {
-      const res = await fetch(`${base}/lrange/${LOG_KEY}/0/${MAX_ENTRIES - 1}`, {
-        headers: redisHeaders()
+      const res = await fetch(`${base}/lrange/${KEY}/0/${MAX_ENTRIES - 1}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
       const entries = (data.result || []).map((raw) => {
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return null;
-        }
+        try { return JSON.parse(raw); } catch { return null; }
       }).filter(Boolean);
       return new Response(JSON.stringify({ entries }), {
         status: 200,
@@ -41,18 +31,20 @@ export default async function handler(request) {
     if (request.method === 'POST') {
       const body = await request.json();
       const entry = {
+        deviceId: body.deviceId || 'unknown',
+        event: body.event || 'play',
         title: body.title || '',
-        artist: body.artist || '',
         videoId: body.videoId || null,
-        offsetSeconds: typeof body.offsetSeconds === 'number' ? body.offsetSeconds : 0,
-        epochMs: body.epochMs || Date.now()
+        position: typeof body.position === 'number' ? body.position : null,
+        nudgeMs: typeof body.nudgeMs === 'number' ? body.nudgeMs : 0,
+        playedAtEpochMs: body.playedAtEpochMs || Date.now()
       };
       const payload = JSON.stringify(entry);
-      await fetch(`${base}/lpush/${LOG_KEY}/${encodeURIComponent(payload)}`, {
-        headers: redisHeaders()
+      await fetch(`${base}/lpush/${KEY}/${encodeURIComponent(payload)}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      await fetch(`${base}/ltrim/${LOG_KEY}/0/${MAX_ENTRIES - 1}`, {
-        headers: redisHeaders()
+      await fetch(`${base}/ltrim/${KEY}/0/${MAX_ENTRIES - 1}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,

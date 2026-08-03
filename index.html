@@ -78,6 +78,8 @@
   }
   #syncCountdown { margin-top: 8px; font-size: 1.1rem; color: #1a4fa0; min-height: 1.4rem; }
   #syncPlayer { width: 1px; height: 1px; overflow: hidden; margin: 8px auto; }
+  #feedPlayer { width: 1px; height: 1px; overflow: hidden; margin: 8px auto; }
+  .feedItem { cursor: pointer; }
   #nudgeRow button {
     padding: 6px 12px;
     font-size: 0.9rem;
@@ -123,6 +125,7 @@
       <span id="nudgeValue" style="margin:0 10px; color:#1a4fa0;">nudge 0.0s</span>
       <button id="nudgeForward">+ 0.5s</button>
       <button id="nudgeReset" style="margin-left:10px;">reset</button>
+      <button id="syncPauseBtn" style="margin-left:10px;">Pause</button>
     </div>
     <div style="margin-top:6px;"><a href="#" id="nudgeLogLink" style="font-size:0.8rem; color:#999;">log this offset for testing</a></div>
     <div id="syncPlayer"></div>
@@ -131,6 +134,9 @@
   <div id="feed">
     <h3>heard across all phones</h3>
     <div id="feedList"></div>
+    <div id="feedPlayerStatus" style="margin-top:8px; font-size:0.85rem; color:#999;"></div>
+    <button id="feedPauseBtn" style="display:none; margin-top:6px;">Pause</button>
+    <div id="feedPlayer"></div>
   </div>
 
 <script>
@@ -277,21 +283,34 @@ function createSyncPlayer() {
   });
 }
 
+let syncLive = false;
+let syncFireEpoch = null;
+
 function scheduleSyncPlay() {
   if (!syncPlayerReady || !lastMatch) return;
+  syncLive = false;
   const leadMs = 4000;
-  const fireEpoch = now() + leadMs;
-  const projectedPosition = lastMatch.offsetSeconds + (leadMs / 1000) + (nudgeMs / 1000);
+  syncFireEpoch = now() + leadMs;
+  const initialPosition = lastMatch.offsetSeconds + (leadMs / 1000) + (nudgeMs / 1000);
   syncPlayer.mute();
-  syncPlayer.cueVideoById(lastMatch.videoId, Math.max(projectedPosition, 0));
+  syncPlayer.cueVideoById(lastMatch.videoId, Math.max(initialPosition, 0));
 
   const tick = () => {
-    const remaining = fireEpoch - now();
+    const remaining = syncFireEpoch - now();
     if (remaining <= 0) {
-      syncPlayer.seekTo(projectedPosition, true);
+      const firePosition = lastMatch.offsetSeconds + (leadMs / 1000) + (nudgeMs / 1000);
+      syncPlayer.seekTo(Math.max(firePosition, 0), true);
       syncPlayer.playVideo();
       setTimeout(() => syncPlayer.unMute(), 300);
       syncCountdown.textContent = 'live';
+      syncLive = true;
+      logPlayEvent({
+        event: 'watch_in_sync_fire',
+        title: lastMatch.title,
+        videoId: lastMatch.videoId,
+        position: Math.max(firePosition, 0),
+        nudgeMs
+      });
       return;
     }
     syncCountdown.textContent = 'starting in ' + (remaining / 1000).toFixed(1) + 's';
@@ -300,27 +319,65 @@ function scheduleSyncPlay() {
   tick();
 }
 
+function getDeviceId() {
+  let id = localStorage.getItem('songsync:deviceId');
+  if (!id) {
+    id = 'phone-' + Math.random().toString(36).slice(2, 8);
+    localStorage.setItem('songsync:deviceId', id);
+  }
+  return id;
+}
+const deviceId = getDeviceId();
+
+async function logPlayEvent(details) {
+  try {
+    await fetch('/api/play-log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(Object.assign({ deviceId, playedAtEpochMs: Date.now() }, details))
+    });
+  } catch (err) {}
+}
+
 let nudgeMs = Number(localStorage.getItem('songsync:nudgeMs')) || 0;
 const nudgeValueEl = document.getElementById('nudgeValue');
 const nudgeBackBtn = document.getElementById('nudgeBack');
 const nudgeForwardBtn = document.getElementById('nudgeForward');
 const nudgeResetBtn = document.getElementById('nudgeReset');
+const syncPauseBtn = document.getElementById('syncPauseBtn');
+let syncPaused = false;
 
 function renderNudge() {
   nudgeValueEl.textContent = 'nudge ' + (nudgeMs >= 0 ? '+' : '') + (nudgeMs / 1000).toFixed(1) + 's';
 }
 
 function setNudge(newValueMs) {
+  const deltaSeconds = (newValueMs - nudgeMs) / 1000;
   nudgeMs = newValueMs;
   localStorage.setItem('songsync:nudgeMs', String(nudgeMs));
   renderNudge();
-  if (syncPlayerReady && lastMatch) scheduleSyncPlay();
+  if (syncLive && syncPlayer) {
+    const newPos = Math.max(0, syncPlayer.getCurrentTime() + deltaSeconds);
+    syncPlayer.seekTo(newPos, true);
+  }
 }
 
 nudgeBackBtn.addEventListener('click', () => setNudge(nudgeMs - 500));
 nudgeForwardBtn.addEventListener('click', () => setNudge(nudgeMs + 500));
 nudgeResetBtn.addEventListener('click', () => setNudge(0));
 renderNudge();
+
+syncPauseBtn.addEventListener('click', () => {
+  if (!syncLive || !syncPlayer) return;
+  if (syncPaused) {
+    syncPlayer.playVideo();
+    syncPauseBtn.textContent = 'Pause';
+  } else {
+    syncPlayer.pauseVideo();
+    syncPauseBtn.textContent = 'Resume';
+  }
+  syncPaused = !syncPaused;
+});
 
 const nudgeLogLink = document.getElementById('nudgeLogLink');
 nudgeLogLink.addEventListener('click', async (e) => {
@@ -472,7 +529,7 @@ async function pushAnchor() {
     artist: chosenVideo.channel,
     videoId: chosenVideo.videoId,
     offsetSeconds: currentTime,
-    epochMs: Date.now()
+    epochMs: now()
   };
   try {
     await fetch('/api/anchor', {
@@ -486,7 +543,7 @@ async function pushAnchor() {
 }
 
 async function logBroadcastStart() {
-  if (!chosenVideo) return;
+  if (!chosenVideo || !hostPlayer) return;
   try {
     await fetch('/api/log', {
       method: 'POST',
@@ -495,7 +552,8 @@ async function logBroadcastStart() {
         title: chosenVideo.title,
         artist: chosenVideo.channel,
         videoId: chosenVideo.videoId,
-        epochMs: Date.now()
+        offsetSeconds: hostPlayer.getCurrentTime(),
+        epochMs: now()
       })
     });
   } catch (err) {}
@@ -551,7 +609,81 @@ function buildFeedRow(e) {
   row.innerHTML = '<div class="ft">' + escapeHtml(e.title) + '</div>' +
     '<div class="fa">' + escapeHtml(e.artist) + '</div>' +
     '<div class="fs">' + secondsAgo + 's ago</div>';
+  row.addEventListener('click', () => playFeedEntry(e));
   return row;
+}
+
+const feedPlayerStatus = document.getElementById('feedPlayerStatus');
+const feedPauseBtn = document.getElementById('feedPauseBtn');
+let feedPlayer = null;
+let feedPlayerReady = false;
+let pendingFeedEntry = null;
+let feedPaused = false;
+
+feedPauseBtn.addEventListener('click', () => {
+  if (!feedPlayer) return;
+  if (feedPaused) {
+    feedPlayer.playVideo();
+    feedPauseBtn.textContent = 'Pause';
+  } else {
+    feedPlayer.pauseVideo();
+    feedPauseBtn.textContent = 'Resume';
+  }
+  feedPaused = !feedPaused;
+});
+
+function playFeedEntry(entry) {
+  if (!entry.videoId) {
+    feedPlayerStatus.textContent = 'no video linked to this entry';
+    return;
+  }
+  pendingFeedEntry = entry;
+  if (!feedPlayer) {
+    if (window.YT && window.YT.Player) {
+      createFeedPlayer();
+    } else {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.body.appendChild(tag);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function () {
+        if (prev) prev();
+        createFeedPlayer();
+      };
+    }
+  } else if (feedPlayerReady) {
+    firePendingFeedEntry();
+  }
+}
+
+function createFeedPlayer() {
+  feedPlayer = new YT.Player('feedPlayer', {
+    height: '1',
+    width: '1',
+    playerVars: { controls: 0 },
+    events: {
+      onReady: () => { feedPlayerReady = true; firePendingFeedEntry(); }
+    }
+  });
+}
+
+function firePendingFeedEntry() {
+  if (!pendingFeedEntry || !feedPlayerReady) return;
+  const e = pendingFeedEntry;
+  const elapsedSinceHeard = Math.max(0, (Date.now() - e.epochMs) / 1000);
+  const position = (e.offsetSeconds || 0) + elapsedSinceHeard;
+  feedPlayerStatus.textContent = 'playing: ' + e.title + ' — ' + e.artist;
+  feedPlayer.loadVideoById(e.videoId, Math.max(position, 0));
+  feedPauseBtn.style.display = 'inline-block';
+  feedPaused = false;
+  feedPauseBtn.textContent = 'Pause';
+  logPlayEvent({
+    event: 'feed_play',
+    title: e.title,
+    videoId: e.videoId,
+    position: Math.max(position, 0),
+    nudgeMs
+  });
 }
 
 pollFeed();
