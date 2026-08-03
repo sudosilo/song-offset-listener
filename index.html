@@ -289,7 +289,18 @@ function createSyncPlayer() {
     width: '1',
     playerVars: { controls: 0 },
     events: {
-      onReady: () => { syncPlayerReady = true; scheduleSyncPlay(); }
+      onReady: () => { syncPlayerReady = true; scheduleSyncPlay(); },
+      onStateChange: (event) => {
+        if (event.data === YT.PlayerState.PLAYING && !syncLive) {
+          syncPlayer.pauseVideo();
+          logPlayEvent({
+            event: 'premature_play_blocked',
+            title: lastMatch ? lastMatch.title : null,
+            videoId: lastMatch ? lastMatch.videoId : null,
+            nudgeMs
+          });
+        }
+      }
     }
   });
 }

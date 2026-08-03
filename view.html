@@ -164,7 +164,18 @@ window.onYouTubeIframeAPIReady = function () {
     width: '1',
     playerVars: { controls: 0 },
     events: {
-      onReady: () => { ytReady = true; }
+      onReady: () => { ytReady = true; },
+      onStateChange: (event) => {
+        if (event.data === YT.PlayerState.PLAYING && !syncLive) {
+          ytPlayer.pauseVideo();
+          logPlayEvent({
+            event: 'premature_play_blocked',
+            title: anchor ? anchor.title : null,
+            videoId: anchor ? anchor.videoId : null,
+            nudgeMs
+          });
+        }
+      }
     }
   });
 };
