@@ -80,16 +80,25 @@
   #syncPlayer { width: 1px; height: 1px; overflow: hidden; margin: 8px auto; }
   #feedPlayer { width: 1px; height: 1px; overflow: hidden; margin: 8px auto; }
   .feedItem { cursor: pointer; }
-  #nudgeRow button {
-    padding: 6px 12px;
-    font-size: 0.9rem;
+  #inlineControls button {
+    padding: 5px 10px;
+    font-size: 0.85rem;
     border-radius: 8px;
     border: 2px solid #1a4fa0;
     background: #eaf1fb;
     color: #1a4fa0;
     cursor: pointer;
   }
-  #nudgeValue { font-size: 0.95rem; }
+  #nudgeSubRow button {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    border: 1px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
+  #nudgeValue { font-size: 0.85rem; }
 </style>
 </head>
 <body>
@@ -113,21 +122,27 @@
   </div>
 
   <div id="result">
-    <h2 id="songTitle"></h2>
+    <div id="titleControlRow" style="display:flex; align-items:baseline; justify-content:center; gap:10px; flex-wrap:wrap;">
+      <h2 id="songTitle" style="margin:0;"></h2>
+      <div id="inlineControls" style="display:flex; align-items:center; gap:6px;">
+        <button id="syncPauseBtn">Pause</button>
+        <button id="nudgeBack">- 0.5s</button>
+        <button id="nudgeForward">+ 0.5s</button>
+      </div>
+    </div>
     <div class="artist" id="songArtist"></div>
+    <div id="liveClock" style="font-size:1.6rem; color:#1a4fa0; margin-top:6px;">--:--.-</div>
+    <div class="label">live position</div>
     <div class="offset" id="songOffset"></div>
     <div class="label">matched offset into track</div>
     <div class="label" id="videoInfo" style="margin-top:8px;"></div>
     <button id="syncWatchBtn" style="display:none;">Watch In Sync</button>
     <div id="syncCountdown"></div>
-    <div id="nudgeRow" style="margin-top:10px;">
-      <button id="nudgeBack">- 0.5s</button>
-      <span id="nudgeValue" style="margin:0 10px; color:#1a4fa0;">nudge 0.0s</span>
-      <button id="nudgeForward">+ 0.5s</button>
+    <div id="nudgeSubRow" style="margin-top:8px; font-size:0.85rem; color:#999;">
+      <span id="nudgeValue">nudge 0.0s</span>
       <button id="nudgeReset" style="margin-left:10px;">reset</button>
-      <button id="syncPauseBtn" style="margin-left:10px;">Pause</button>
+      <a href="#" id="nudgeLogLink" style="margin-left:10px;">log this offset for testing</a>
     </div>
-    <div style="margin-top:6px;"><a href="#" id="nudgeLogLink" style="font-size:0.8rem; color:#999;">log this offset for testing</a></div>
     <div id="syncPlayer"></div>
   </div>
 
@@ -323,6 +338,15 @@ function currentIntendedPosition() {
   const elapsed = (now() - syncMatchEpoch) / 1000;
   return lastMatch.offsetSeconds + elapsed + (nudgeMs / 1000);
 }
+
+const liveClockEl = document.getElementById('liveClock');
+setInterval(() => {
+  if (!lastMatch || syncMatchEpoch === null) {
+    liveClockEl.textContent = '--:--.-';
+    return;
+  }
+  liveClockEl.textContent = formatOffset(currentIntendedPosition());
+}, 100);
 
 function scheduleSyncPlay() {
   if (!syncPlayerReady || !lastMatch) return;
