@@ -45,7 +45,8 @@
   #result .label { font-size: 0.85rem; color: #777; }
   #manualSection { margin-top: 30px; width: 100%; max-width: 420px; }
   #manualToggle { background: none; border: none; color: #1a4fa0; font-size: 0.95rem; text-decoration: underline; cursor: pointer; }
-  #searchBox { display: none; margin-top: 16px; }
+  #manualLabel { font-size: 0.85rem; color: #999; margin-bottom: 8px; }
+  #searchBox { display: block; margin-top: 6px; }
   #searchInput { width: 70%; padding: 10px; font-size: 1rem; border: 2px solid #1a4fa0; border-radius: 8px; font-family: Georgia, serif; }
   #searchBtn { padding: 10px 16px; font-size: 1rem; border: 2px solid #1a4fa0; background: #eaf1fb; color: #1a4fa0; border-radius: 8px; }
   #searchResults { margin-top: 16px; text-align: left; }
@@ -77,30 +78,25 @@
   }
   #syncCountdown { margin-top: 8px; font-size: 1.1rem; color: #1a4fa0; min-height: 1.4rem; }
   #syncPlayer { width: 1px; height: 1px; overflow: hidden; margin: 8px auto; }
+  #nudgeRow button {
+    padding: 6px 12px;
+    font-size: 0.9rem;
+    border-radius: 8px;
+    border: 2px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
+  #nudgeValue { font-size: 0.95rem; }
 </style>
 </head>
 <body>
   <h1>Song Offset Listener</h1>
   <button id="listenBtn">Listen</button>
   <div id="status"></div>
-  <div id="result">
-    <h2 id="songTitle"></h2>
-    <div class="artist" id="songArtist"></div>
-    <div class="offset" id="songOffset"></div>
-    <div class="label">matched offset into track</div>
-    <div class="label" id="videoInfo" style="margin-top:8px;"></div>
-    <button id="syncWatchBtn" style="display:none;">Watch In Sync</button>
-    <div id="syncCountdown"></div>
-    <div id="syncPlayer"></div>
-  </div>
-
-  <div id="feed">
-    <h3>heard across all phones</h3>
-    <div id="feedList"></div>
-  </div>
 
   <div id="manualSection">
-    <button id="manualToggle">search a video manually instead</button>
+    <div id="manualLabel">optional manual search</div>
     <div id="searchBox">
       <input id="searchInput" type="text" placeholder="song or artist">
       <button id="searchBtn">Search</button>
@@ -112,6 +108,29 @@
       <button id="broadcastBtn">Play and Broadcast</button>
       <div id="broadcastStatus"></div>
     </div>
+  </div>
+
+  <div id="result">
+    <h2 id="songTitle"></h2>
+    <div class="artist" id="songArtist"></div>
+    <div class="offset" id="songOffset"></div>
+    <div class="label">matched offset into track</div>
+    <div class="label" id="videoInfo" style="margin-top:8px;"></div>
+    <button id="syncWatchBtn" style="display:none;">Watch In Sync</button>
+    <div id="syncCountdown"></div>
+    <div id="nudgeRow" style="margin-top:10px;">
+      <button id="nudgeBack">- 0.5s</button>
+      <span id="nudgeValue" style="margin:0 10px; color:#1a4fa0;">nudge 0.0s</span>
+      <button id="nudgeForward">+ 0.5s</button>
+      <button id="nudgeReset" style="margin-left:10px;">reset</button>
+    </div>
+    <div style="margin-top:6px;"><a href="#" id="nudgeLogLink" style="font-size:0.8rem; color:#999;">log this offset for testing</a></div>
+    <div id="syncPlayer"></div>
+  </div>
+
+  <div id="feed">
+    <h3>heard across all phones</h3>
+    <div id="feedList"></div>
   </div>
 
 <script>
@@ -142,7 +161,7 @@ async function startListen() {
   }
 
   const chunks = [];
-  const captureStartedAt = Date.now();
+  const captureStartedAt = now();
   const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
   const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
@@ -262,7 +281,7 @@ function scheduleSyncPlay() {
   if (!syncPlayerReady || !lastMatch) return;
   const leadMs = 4000;
   const fireEpoch = now() + leadMs;
-  const projectedPosition = lastMatch.offsetSeconds + (leadMs / 1000);
+  const projectedPosition = lastMatch.offsetSeconds + (leadMs / 1000) + (nudgeMs / 1000);
   syncPlayer.mute();
   syncPlayer.cueVideoById(lastMatch.videoId, Math.max(projectedPosition, 0));
 
@@ -281,8 +300,46 @@ function scheduleSyncPlay() {
   tick();
 }
 
-const manualToggle = document.getElementById('manualToggle');
-const searchBox = document.getElementById('searchBox');
+let nudgeMs = Number(localStorage.getItem('songsync:nudgeMs')) || 0;
+const nudgeValueEl = document.getElementById('nudgeValue');
+const nudgeBackBtn = document.getElementById('nudgeBack');
+const nudgeForwardBtn = document.getElementById('nudgeForward');
+const nudgeResetBtn = document.getElementById('nudgeReset');
+
+function renderNudge() {
+  nudgeValueEl.textContent = 'nudge ' + (nudgeMs >= 0 ? '+' : '') + (nudgeMs / 1000).toFixed(1) + 's';
+}
+
+function setNudge(newValueMs) {
+  nudgeMs = newValueMs;
+  localStorage.setItem('songsync:nudgeMs', String(nudgeMs));
+  renderNudge();
+  if (syncPlayerReady && lastMatch) scheduleSyncPlay();
+}
+
+nudgeBackBtn.addEventListener('click', () => setNudge(nudgeMs - 500));
+nudgeForwardBtn.addEventListener('click', () => setNudge(nudgeMs + 500));
+nudgeResetBtn.addEventListener('click', () => setNudge(0));
+renderNudge();
+
+const nudgeLogLink = document.getElementById('nudgeLogLink');
+nudgeLogLink.addEventListener('click', async (e) => {
+  e.preventDefault();
+  const prevText = nudgeLogLink.textContent;
+  try {
+    await fetch('/api/nudge-log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nudgeMs, note: 'host page' })
+    });
+    nudgeLogLink.textContent = 'logged';
+    setTimeout(() => { nudgeLogLink.textContent = prevText; }, 1500);
+  } catch (err) {
+    nudgeLogLink.textContent = 'failed to log';
+    setTimeout(() => { nudgeLogLink.textContent = prevText; }, 1500);
+  }
+});
+
 const searchInput = document.getElementById('searchInput');
 const searchBtn = document.getElementById('searchBtn');
 const searchResults = document.getElementById('searchResults');
@@ -296,11 +353,6 @@ let hostPlayerReady = false;
 let chosenVideo = null;
 let broadcasting = false;
 let broadcastTimer = null;
-
-manualToggle.addEventListener('click', () => {
-  const showing = searchBox.style.display === 'block';
-  searchBox.style.display = showing ? 'none' : 'block';
-});
 
 searchBtn.addEventListener('click', runSearch);
 
@@ -348,7 +400,6 @@ function selectVideo(video) {
   chosenVideo = video;
   chosenTitle.textContent = video.title;
   broadcastPanel.style.display = 'block';
-  searchBox.style.display = 'none';
 
   if (!hostPlayer) {
     loadYouTubeApiHost();
@@ -467,16 +518,40 @@ function renderFeed(entries) {
     feedList.innerHTML = '<div class="feedItem fs">nothing heard yet</div>';
     return;
   }
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const recent = entries.filter(e => (nowMs - e.epochMs) < ONE_HOUR_MS);
+  const older = entries.filter(e => (nowMs - e.epochMs) >= ONE_HOUR_MS);
+
   feedList.innerHTML = '';
-  entries.forEach(e => {
-    const row = document.createElement('div');
-    row.className = 'feedItem';
-    const secondsAgo = Math.max(0, Math.round((Date.now() - e.epochMs) / 1000));
-    row.innerHTML = '<div class="ft">' + escapeHtml(e.title) + '</div>' +
-      '<div class="fa">' + escapeHtml(e.artist) + '</div>' +
-      '<div class="fs">' + secondsAgo + 's ago</div>';
-    feedList.appendChild(row);
-  });
+  if (recent.length === 0) {
+    feedList.innerHTML = '<div class="feedItem fs">nothing heard in the last hour</div>';
+  } else {
+    recent.forEach(e => feedList.appendChild(buildFeedRow(e)));
+  }
+
+  if (older.length > 0) {
+    const details = document.createElement('details');
+    details.style.marginTop = '10px';
+    const summary = document.createElement('summary');
+    summary.style.cursor = 'pointer';
+    summary.style.color = '#999';
+    summary.style.fontSize = '0.85rem';
+    summary.textContent = 'older than an hour (' + older.length + ')';
+    details.appendChild(summary);
+    older.forEach(e => details.appendChild(buildFeedRow(e)));
+    feedList.appendChild(details);
+  }
+}
+
+function buildFeedRow(e) {
+  const row = document.createElement('div');
+  row.className = 'feedItem';
+  const secondsAgo = Math.max(0, Math.round((Date.now() - e.epochMs) / 1000));
+  row.innerHTML = '<div class="ft">' + escapeHtml(e.title) + '</div>' +
+    '<div class="fa">' + escapeHtml(e.artist) + '</div>' +
+    '<div class="fs">' + secondsAgo + 's ago</div>';
+  return row;
 }
 
 pollFeed();
