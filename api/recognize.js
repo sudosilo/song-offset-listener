@@ -1,5 +1,5 @@
 import { findYouTubeMatch } from '../lib/youtube.js';
-import { writeAnchor } from '../lib/anchor.js';
+import { writeAnchor } from '../lib/anchor-store.js';
 
 export const config = { runtime: 'edge' };
 

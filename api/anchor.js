@@ -1,3 +1,5 @@
+import { writeAnchor } from '../lib/anchor-store.js';
+
 export const config = { runtime: 'edge' };
 
 export default async function handler(request) {
@@ -5,6 +7,33 @@ export default async function handler(request) {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {
     return new Response(JSON.stringify({ error: 'redis not configured' }), { status: 500 });
+  }
+
+  if (request.method === 'POST') {
+    let body;
+    try {
+      body = await request.json();
+    } catch (err) {
+      return new Response(JSON.stringify({ error: 'bad json body' }), { status: 400 });
+    }
+
+    if (!body.title || typeof body.offsetSeconds !== 'number' || typeof body.epochMs !== 'number') {
+      return new Response(JSON.stringify({ error: 'missing title, offsetSeconds, or epochMs' }), { status: 400 });
+    }
+
+    const ok = await writeAnchor({
+      title: body.title,
+      artist: body.artist || '',
+      offsetSeconds: body.offsetSeconds,
+      epochMs: body.epochMs,
+      videoId: body.videoId || null,
+      videoDurationSeconds: body.videoDurationSeconds || null
+    });
+
+    return new Response(JSON.stringify({ ok }), {
+      status: ok ? 200 : 502,
+      headers: { 'content-type': 'application/json' }
+    });
   }
 
   let res;
