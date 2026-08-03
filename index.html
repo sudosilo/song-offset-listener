@@ -307,20 +307,28 @@ function createSyncPlayer() {
 
 let syncLive = false;
 let syncFireEpoch = null;
+let syncMatchEpoch = null;
+
+function currentIntendedPosition() {
+  if (!lastMatch || syncMatchEpoch === null) return 0;
+  const elapsed = (now() - syncMatchEpoch) / 1000;
+  return lastMatch.offsetSeconds + elapsed + (nudgeMs / 1000);
+}
 
 function scheduleSyncPlay() {
   if (!syncPlayerReady || !lastMatch) return;
   syncLive = false;
   const leadMs = 4000;
-  syncFireEpoch = now() + leadMs;
-  const initialPosition = lastMatch.offsetSeconds + (leadMs / 1000) + (nudgeMs / 1000);
+  syncMatchEpoch = now();
+  syncFireEpoch = syncMatchEpoch + leadMs;
+  const initialPosition = currentIntendedPosition();
   syncPlayer.mute();
   syncPlayer.cueVideoById(lastMatch.videoId, Math.max(initialPosition, 0));
 
   const tick = () => {
     const remaining = syncFireEpoch - now();
     if (remaining <= 0) {
-      const firePosition = lastMatch.offsetSeconds + (leadMs / 1000) + (nudgeMs / 1000);
+      const firePosition = currentIntendedPosition();
       syncPlayer.seekTo(Math.max(firePosition, 0), true);
       syncPlayer.playVideo();
       setTimeout(() => syncPlayer.unMute(), 300);
@@ -361,7 +369,7 @@ async function logPlayEvent(details) {
   } catch (err) {}
 }
 
-let nudgeMs = Number(localStorage.getItem('songsync:nudgeMs')) || 0;
+let nudgeMs = 0;
 const nudgeValueEl = document.getElementById('nudgeValue');
 const nudgeBackBtn = document.getElementById('nudgeBack');
 const nudgeForwardBtn = document.getElementById('nudgeForward');
@@ -374,13 +382,11 @@ function renderNudge() {
 }
 
 function setNudge(newValueMs) {
-  const deltaSeconds = (newValueMs - nudgeMs) / 1000;
   nudgeMs = newValueMs;
-  localStorage.setItem('songsync:nudgeMs', String(nudgeMs));
   renderNudge();
   if (syncLive && syncPlayer) {
-    const newPos = Math.max(0, syncPlayer.getCurrentTime() + deltaSeconds);
-    syncPlayer.seekTo(newPos, true);
+    const target = currentIntendedPosition();
+    syncPlayer.seekTo(Math.max(target, 0), true);
   }
 }
 

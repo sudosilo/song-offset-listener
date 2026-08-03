@@ -250,7 +250,7 @@ async function logPlayEvent(details) {
   } catch (err) {}
 }
 
-let nudgeMs = Number(localStorage.getItem('songsync:nudgeMs')) || 0;
+let nudgeMs = 0;
 const nudgeValueEl = document.getElementById('nudgeValue');
 const nudgeBackBtn = document.getElementById('nudgeBack');
 const nudgeForwardBtn = document.getElementById('nudgeForward');
@@ -263,13 +263,12 @@ function renderNudge() {
 }
 
 function setNudge(newValueMs) {
-  const deltaSeconds = (newValueMs - nudgeMs) / 1000;
   nudgeMs = newValueMs;
-  localStorage.setItem('songsync:nudgeMs', String(nudgeMs));
   renderNudge();
-  if (syncLive && ytPlayer) {
-    const newPos = Math.max(0, ytPlayer.getCurrentTime() + deltaSeconds);
-    ytPlayer.seekTo(newPos, true);
+  if (syncLive && ytPlayer && anchor) {
+    const elapsed = (now() - anchor.epochMs) / 1000 + (nudgeMs / 1000);
+    const target = anchor.offsetSeconds + elapsed;
+    ytPlayer.seekTo(Math.max(target, 0), true);
   }
 }
 
