@@ -108,6 +108,7 @@ let anchor = null;
 let lastFetchedAt = 0;
 let clockOffsetMs = 0;
 
+let hasCalibratedOnce = false;
 async function calibrateClock() {
   const samples = [];
   for (let i = 0; i < 5; i++) {
@@ -125,9 +126,17 @@ async function calibrateClock() {
   }
   if (samples.length === 0) return;
   samples.sort((a, b) => a.rtt - b.rtt);
-  clockOffsetMs = samples[0].offset;
+  const freshOffset = samples[0].offset;
+  if (!hasCalibratedOnce) {
+    clockOffsetMs = freshOffset;
+    hasCalibratedOnce = true;
+  } else {
+    const drift = freshOffset - clockOffsetMs;
+    clockOffsetMs += drift * 0.5;
+  }
   statusEl.textContent = 'clock calibrated';
 }
+setInterval(calibrateClock, 75000);
 
 function now() {
   return Date.now() + clockOffsetMs;
