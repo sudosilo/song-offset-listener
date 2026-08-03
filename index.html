@@ -319,8 +319,8 @@ function scheduleSyncPlay() {
   if (!syncPlayerReady || !lastMatch) return;
   syncLive = false;
   const leadMs = 4000;
-  syncMatchEpoch = now();
-  syncFireEpoch = syncMatchEpoch + leadMs;
+  syncMatchEpoch = (typeof lastMatch.epochMs === 'number') ? lastMatch.epochMs : now();
+  syncFireEpoch = now() + leadMs;
   const initialPosition = currentIntendedPosition();
   syncPlayer.mute();
   syncPlayer.cueVideoById(lastMatch.videoId, Math.max(initialPosition, 0));

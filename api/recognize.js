@@ -1,4 +1,5 @@
 import { findYouTubeMatch } from '../lib/youtube.js';
+import { writeAnchor } from '../lib/anchor.js';
 
 export const config = { runtime: 'edge' };
 
@@ -80,31 +81,12 @@ export default async function handler(request) {
     title: result.title,
     artist: result.artist,
     offsetSeconds,
+    epochMs: offsetSeconds !== null ? (clientCapturedAt !== null ? clientCapturedAt : Date.now() - clipDurationMs) : null,
     anchorWritten,
     videoId: match ? match.videoId : null,
     videoDurationSeconds: match ? match.durationSeconds : null,
     raw: result
   }), { status: 200, headers: { 'content-type': 'application/json' } });
-}
-
-async function writeAnchor(anchor) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return false;
-
-  try {
-    const res = await fetch(`${url}/set/songsync:anchor`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify(anchor)
-    });
-    return res.ok;
-  } catch (err) {
-    return false;
-  }
 }
 
 async function appendLog(entry) {
