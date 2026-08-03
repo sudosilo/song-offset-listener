@@ -12,8 +12,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    height: 100vh;
+    justify-content: flex-start;
+    min-height: 100vh;
     margin: 0;
     text-align: center;
     padding: 20px;
@@ -47,6 +47,19 @@
     cursor: pointer;
   }
   #nudgeValue { font-size: 0.95rem; }
+  .feedItem { border-bottom: 1px solid #ddd; padding: 8px 0; text-align: left; }
+  .ft { color: #1a4fa0; }
+  .fa { color: #333; }
+  .fs { color: #999; font-size: 0.8rem; }
+  #broadcastNudgeRow button {
+    padding: 6px 12px;
+    font-size: 0.9rem;
+    border-radius: 8px;
+    border: 2px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -66,6 +79,17 @@
   </div>
   <div style="margin-top:6px;"><a href="#" id="nudgeLogLink" style="font-size:0.8rem; color:#999;">log this offset for testing</a></div>
   <div id="player"></div>
+
+  <div id="positionsPanel" style="margin-top:24px;">
+    <h3>live positions</h3>
+    <div id="positionsList"></div>
+    <div id="broadcastNudgeRow" style="margin-top:14px;">
+      <div style="font-size:0.85rem; color:#999;">broadcast timing (shifts every phone at once)</div>
+      <button id="broadcastNudgeBack" style="margin-top:6px;">- 0.5s</button>
+      <button id="broadcastNudgeForward" style="margin-left:8px;">+ 0.5s</button>
+      <span id="broadcastNudgeStatus" style="margin-left:8px; font-size:0.85rem; color:#999;"></span>
+    </div>
+  </div>
 
 <script>
 const titleEl = document.getElementById('title');
@@ -272,6 +296,95 @@ nudgeLogLink.addEventListener('click', async (e) => {
     setTimeout(() => { nudgeLogLink.textContent = prevText; }, 1500);
   }
 });
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function reportActivePosition() {
+  if (!(syncLive && ytPlayer && anchor)) return;
+  fetch('/api/positions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      deviceId,
+      title: anchor.title,
+      videoId: anchor.videoId,
+      position: ytPlayer.getCurrentTime(),
+      paused: syncPaused,
+      nudgeMs
+    })
+  }).catch(() => {});
+}
+setInterval(reportActivePosition, 1500);
+
+const positionsList = document.getElementById('positionsList');
+
+async function pollPositions() {
+  try {
+    const res = await fetch('/api/positions', { cache: 'no-store' });
+    const data = await res.json();
+    renderPositions(data.devices || []);
+  } catch (err) {}
+}
+setInterval(pollPositions, 2000);
+pollPositions();
+
+function renderPositions(devices) {
+  if (devices.length === 0) {
+    positionsList.innerHTML = '<div class="feedItem fs">no phones reporting yet</div>';
+    return;
+  }
+  devices.sort((a, b) => (b.updatedAtEpochMs || 0) - (a.updatedAtEpochMs || 0));
+  positionsList.innerHTML = '';
+  devices.forEach(d => {
+    const staleSec = Math.max(0, Math.round((Date.now() - (d.updatedAtEpochMs || 0)) / 1000));
+    const isMe = d.deviceId === deviceId;
+    const row = document.createElement('div');
+    row.className = 'feedItem';
+    row.innerHTML = '<div class="ft">' + escapeHtml(d.deviceId) + (isMe ? ' (this phone)' : '') + '</div>' +
+      '<div class="fa">' + escapeHtml(d.title || '') + (d.paused ? ' — paused' : '') + '</div>' +
+      '<div class="fs">' + formatOffset(d.position || 0) + ' · updated ' + staleSec + 's ago · nudge ' +
+      (d.nudgeMs >= 0 ? '+' : '') + (d.nudgeMs / 1000).toFixed(1) + 's</div>';
+    positionsList.appendChild(row);
+  });
+}
+
+document.getElementById('broadcastNudgeBack').addEventListener('click', () => applyBroadcastNudge(-500));
+document.getElementById('broadcastNudgeForward').addEventListener('click', () => applyBroadcastNudge(500));
+
+async function applyBroadcastNudge(deltaMs) {
+  const statusEl = document.getElementById('broadcastNudgeStatus');
+  try {
+    const res = await fetch('/api/anchor', { cache: 'no-store' });
+    const currentAnchor = await res.json();
+    if (!currentAnchor || currentAnchor.error || typeof currentAnchor.epochMs !== 'number') {
+      statusEl.textContent = 'no active broadcast to adjust';
+      setTimeout(() => { statusEl.textContent = ''; }, 2000);
+      return;
+    }
+    const updated = {
+      title: currentAnchor.title,
+      artist: currentAnchor.artist,
+      offsetSeconds: currentAnchor.offsetSeconds,
+      epochMs: currentAnchor.epochMs - deltaMs,
+      videoId: currentAnchor.videoId,
+      videoDurationSeconds: currentAnchor.videoDurationSeconds
+    };
+    await fetch('/api/anchor', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(updated)
+    });
+    statusEl.textContent = 'shifted ' + (deltaMs > 0 ? '+' : '') + (deltaMs / 1000).toFixed(1) + 's for everyone';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  } catch (err) {
+    statusEl.textContent = 'failed to adjust';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  }
+}
 
 function formatOffset(seconds) {
   if (seconds < 0) seconds = 0;
