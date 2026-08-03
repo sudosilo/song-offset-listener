@@ -1,3 +1,5 @@
+import { findYouTubeMatch } from '../lib/youtube.js';
+
 export const config = { runtime: 'edge' };
 
 export default async function handler(request) {
@@ -45,6 +47,13 @@ export default async function handler(request) {
   const result = data.result;
   const offsetSeconds = parseOffset(result.timecode);
 
+  let match = null;
+  try {
+    match = await findYouTubeMatch(result.title, result.artist);
+  } catch (err) {
+    match = null;
+  }
+
   let anchorWritten = false;
   if (offsetSeconds !== null) {
     const epochMs = Date.now() - clipDurationMs;
@@ -52,6 +61,14 @@ export default async function handler(request) {
       title: result.title,
       artist: result.artist,
       offsetSeconds,
+      epochMs,
+      videoId: match ? match.videoId : null,
+      videoDurationSeconds: match ? match.durationSeconds : null
+    });
+    await appendLog({
+      title: result.title,
+      artist: result.artist,
+      videoId: match ? match.videoId : null,
       epochMs
     });
   }
@@ -61,6 +78,8 @@ export default async function handler(request) {
     artist: result.artist,
     offsetSeconds,
     anchorWritten,
+    videoId: match ? match.videoId : null,
+    videoDurationSeconds: match ? match.durationSeconds : null,
     raw: result
   }), { status: 200, headers: { 'content-type': 'application/json' } });
 }
@@ -80,6 +99,25 @@ async function writeAnchor(anchor) {
       body: JSON.stringify(anchor)
     });
     return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function appendLog(entry) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return false;
+
+  try {
+    const payload = JSON.stringify(entry);
+    await fetch(`${url}/lpush/songsync:log/${encodeURIComponent(payload)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    await fetch(`${url}/ltrim/songsync:log/0/19`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return true;
   } catch (err) {
     return false;
   }
