@@ -284,13 +284,24 @@ function matchKey(m) {
   return (m && m.videoId ? m.videoId : '') + '|' + Math.round(m && m.epochMs ? m.epochMs : 0);
 }
 
+function applyDriftCorrection(freshOffsetSeconds, freshEpochMs) {
+  if (!lastMatch || syncMatchEpoch === null) return;
+  const freshSyncMatchEpoch = freshEpochMs - freshOffsetSeconds * 1000 + lastMatch.offsetSeconds * 1000;
+  const drift = freshSyncMatchEpoch - syncMatchEpoch;
+  if (Math.abs(drift) <= RECHECK_DRIFT_SANITY_MS) {
+    syncMatchEpoch += drift * RECHECK_BLEND_FACTOR;
+  }
+}
+
 function activateMatch(data, isMine) {
+  const isSameSongAlreadyActive = lastMatch && data.videoId && lastMatch.videoId === data.videoId && syncLive;
+
   songTitle.textContent = data.title;
   songArtist.textContent = data.artist;
-  songOffset.textContent = formatOffset(data.offsetSeconds);
   resultEl.style.display = 'block';
 
   if (!data.videoId) {
+    songOffset.textContent = formatOffset(data.offsetSeconds);
     videoInfo.textContent = 'no youtube match found';
     syncWatchBtn.style.display = 'none';
     return;
@@ -302,8 +313,17 @@ function activateMatch(data, isMine) {
   syncWatchBtn.style.display = 'inline-block';
 
   const key = matchKey(data);
-  lastMatch = data;
   lastSeenAnchorKey = key;
+
+  if (isSameSongAlreadyActive) {
+    songOffset.textContent = formatOffset(lastMatch.offsetSeconds);
+    applyDriftCorrection(data.offsetSeconds, data.epochMs);
+    if (isMine) { myMatchKey = key; iAmHost = true; broadcastNudgeRowEl.style.display = 'block'; }
+    return;
+  }
+
+  songOffset.textContent = formatOffset(data.offsetSeconds);
+  lastMatch = data;
   if (isMine) {
     myMatchKey = key;
     iAmHost = true;
@@ -335,11 +355,7 @@ async function pollRemoteAnchor() {
 
     const isSameSong = lastMatch && lastMatch.videoId === anchor.videoId;
     if (isSameSong) {
-      const freshSyncMatchEpoch = anchor.epochMs - anchor.offsetSeconds * 1000 + lastMatch.offsetSeconds * 1000;
-      const drift = freshSyncMatchEpoch - syncMatchEpoch;
-      if (Math.abs(drift) <= RECHECK_DRIFT_SANITY_MS && syncMatchEpoch !== null) {
-        syncMatchEpoch += drift * RECHECK_BLEND_FACTOR;
-      }
+      applyDriftCorrection(anchor.offsetSeconds, anchor.epochMs);
       return;
     }
 
@@ -454,7 +470,7 @@ async function backgroundRecheck() {
     const drift = freshSyncMatchEpoch - syncMatchEpoch;
     if (Math.abs(drift) > RECHECK_DRIFT_SANITY_MS) return;
 
-    syncMatchEpoch += drift * RECHECK_BLEND_FACTOR;
+    applyDriftCorrection(data.offsetSeconds, data.epochMs);
     logPlayEvent({
       event: 'background_recheck_correction',
       title: lastMatch.title,
