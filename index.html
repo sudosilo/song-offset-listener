@@ -89,6 +89,8 @@
     color: #1a4fa0;
     cursor: pointer;
   }
+  #syncPauseBtn { min-width: 70px; }
+  #nudgeBack, #nudgeForward { min-width: 62px; }
   #nudgeSubRow button {
     padding: 4px 8px;
     font-size: 0.8rem;
@@ -139,8 +141,8 @@
     <button id="syncWatchBtn" style="display:none;">Watch In Sync</button>
     <div id="syncCountdown"></div>
     <div id="nudgeSubRow" style="margin-top:8px; font-size:0.85rem; color:#999;">
-      <span id="nudgeValue">nudge 0.0s</span>
-      <button id="nudgeReset" style="margin-left:10px;">reset</button>
+      <span id="nudgeValue" style="display:none;">nudge 0.0s</span>
+      <button id="nudgeReset">reset</button>
       <a href="#" id="nudgeLogLink" style="margin-left:10px;">log this offset for testing</a>
     </div>
     <div id="syncPlayer"></div>
