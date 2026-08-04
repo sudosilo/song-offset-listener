@@ -331,6 +331,17 @@ function applyDriftCorrection(freshOffsetSeconds, freshEpochMs) {
   }
 }
 
+function anchorIsStale(data) {
+  if (typeof data.epochMs !== 'number') return false;
+  const elapsed = (now() - data.epochMs) / 1000;
+  const projected = (data.offsetSeconds || 0) + elapsed;
+  const duration = data.videoDurationSeconds;
+  if (typeof duration === 'number' && duration > 0) {
+    return projected >= duration;
+  }
+  return elapsed > 1800;
+}
+
 function activateMatch(data, isMine) {
   const isSameSongAlreadyActive = lastMatch && data.videoId && lastMatch.videoId === data.videoId && syncLive;
 
@@ -352,6 +363,13 @@ function activateMatch(data, isMine) {
 
   const key = matchKey(data);
   lastSeenAnchorKey = key;
+
+  if (!isMine && anchorIsStale(data)) {
+    songOffset.textContent = formatOffset(data.offsetSeconds);
+    syncCountdown.textContent = 'that song already finished';
+    lastMatch = data;
+    return;
+  }
 
   if (isSameSongAlreadyActive) {
     songOffset.textContent = formatOffset(lastMatch.offsetSeconds);
@@ -555,7 +573,8 @@ setInterval(() => {
 function scheduleSyncPlay() {
   if (!syncPlayerReady || !lastMatch) return;
   syncLive = false;
-  const leadMs = 4000;
+  const joiningLate = (typeof lastMatch.epochMs === 'number') && (now() - lastMatch.epochMs > 10000);
+  const leadMs = joiningLate ? 1200 : 4000;
   syncMatchEpoch = (typeof lastMatch.epochMs === 'number') ? lastMatch.epochMs : now();
   syncFireEpoch = now() + leadMs;
   const initialPosition = currentIntendedPosition();
