@@ -52,10 +52,17 @@ export default async function handler(request) {
   const offsetSeconds = parseOffset(result.timecode);
 
   let match = null;
-  try {
-    match = await findYouTubeMatch(result.title, result.artist);
-  } catch (err) {
-    match = null;
+  if (!silent) {
+    const cacheKey = 'songsync:ytcache:' + encodeURIComponent((result.title + '|' + result.artist).toLowerCase());
+    match = await readCache(cacheKey);
+    if (match === null) {
+      try {
+        match = await findYouTubeMatch(result.title, result.artist);
+      } catch (err) {
+        match = null;
+      }
+      if (match) await writeCache(cacheKey, match);
+    }
   }
 
   let anchorWritten = false;
@@ -88,6 +95,41 @@ export default async function handler(request) {
     videoDurationSeconds: match ? match.durationSeconds : null,
     raw: result
   }), { status: 200, headers: { 'content-type': 'application/json' } });
+}
+
+async function readCache(key) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const res = await fetch(`${url}/get/${key}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!data.result) return null;
+    return JSON.parse(data.result);
+  } catch (err) {
+    return null;
+  }
+}
+
+async function writeCache(key, value) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return false;
+  try {
+    await fetch(`${url}/set/${key}?EX=2592000`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(value)
+    });
+    return true;
+  } catch (err) {
+    return false;
+  }
 }
 
 async function appendLog(entry) {
