@@ -341,6 +341,75 @@ function currentIntendedPosition() {
   return lastMatch.offsetSeconds + elapsed + (nudgeMs / 1000);
 }
 
+const RECHECK_INTERVAL_MS = 45000;
+const RECHECK_DRIFT_SANITY_MS = 8000;
+const RECHECK_BLEND_FACTOR = 0.5;
+let recheckInProgress = false;
+
+async function backgroundRecheck() {
+  if (!lastMatch || recheckInProgress) return;
+  recheckInProgress = true;
+  try {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      return;
+    }
+    const chunks = [];
+    const capturedAt = now();
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+    recorder.start();
+    setTimeout(() => recorder.stop(), RECORD_MS);
+    await stopped;
+    stream.getTracks().forEach(t => t.stop());
+
+    const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+    const form = new FormData();
+    form.append('audio', blob, 'clip.webm');
+    form.append('capturedAt', String(capturedAt));
+    form.append('clipDurationMs', String(RECORD_MS));
+
+    const res = await fetch('/api/recognize', { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.error || typeof data.offsetSeconds !== 'number' || typeof data.epochMs !== 'number') return;
+    if (!lastMatch || !data.title || !lastMatch.title) return;
+    if (!titleRoughlyMatches(data.title, lastMatch.title)) return;
+
+    const freshSyncMatchEpoch = data.epochMs - (data.offsetSeconds - lastMatch.offsetSeconds) * 1000;
+    const drift = freshSyncMatchEpoch - syncMatchEpoch;
+    if (Math.abs(drift) > RECHECK_DRIFT_SANITY_MS) return;
+
+    syncMatchEpoch += drift * RECHECK_BLEND_FACTOR;
+    logPlayEvent({
+      event: 'background_recheck_correction',
+      title: lastMatch.title,
+      videoId: lastMatch.videoId,
+      position: currentIntendedPosition(),
+      nudgeMs,
+      driftMs: Math.round(drift)
+    });
+  } catch (err) {
+    // silent, this is a background best-effort correction
+  } finally {
+    recheckInProgress = false;
+  }
+}
+
+function titleRoughlyMatches(a, b) {
+  const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (!na || !nb) return false;
+  return na.includes(nb) || nb.includes(na);
+}
+
+setInterval(backgroundRecheck, RECHECK_INTERVAL_MS);
+
 const liveClockEl = document.getElementById('liveClock');
 setInterval(() => {
   if (!lastMatch || syncMatchEpoch === null) {
