@@ -312,6 +312,15 @@ function activateMatch(data, isMine) {
   }
   broadcastNudgeRowEl.style.display = iAmHost ? 'block' : 'none';
 
+  if (!isMine) {
+    logPlayEvent({
+      event: 'remote_anchor_detected',
+      title: data.title,
+      videoId: data.videoId,
+      nudgeMs: 0
+    });
+  }
+
   triggerSync();
 }
 
@@ -335,7 +344,15 @@ async function pollRemoteAnchor() {
     }
 
     activateMatch(anchor, false);
-  } catch (err) {}
+  } catch (err) {
+    logPlayEvent({
+      event: 'poll_error',
+      title: null,
+      videoId: null,
+      nudgeMs: 0,
+      errorMessage: String(err && err.message || err)
+    });
+  }
 }
 setInterval(pollRemoteAnchor, 1500);
 

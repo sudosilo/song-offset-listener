@@ -37,6 +37,7 @@ export default async function handler(request) {
         videoId: body.videoId || null,
         position: typeof body.position === 'number' ? body.position : null,
         nudgeMs: typeof body.nudgeMs === 'number' ? body.nudgeMs : 0,
+        errorMessage: body.errorMessage || null,
         playedAtEpochMs: body.playedAtEpochMs || Date.now()
       };
       const payload = JSON.stringify(entry);
