@@ -133,8 +133,6 @@
       </div>
     </div>
     <div class="artist" id="songArtist"></div>
-    <div id="liveClock" style="font-size:1.6rem; color:#1a4fa0; margin-top:6px;">--:--.-</div>
-    <div class="label">live position</div>
     <div class="offset" id="songOffset"></div>
     <div class="label">matched offset into track</div>
     <div class="label" id="videoInfo" style="margin-top:8px;"></div>
@@ -561,15 +559,6 @@ document.getElementById('recheckToggle').addEventListener('change', (e) => {
   recheckEnabled = e.target.checked;
 });
 
-const liveClockEl = document.getElementById('liveClock');
-setInterval(() => {
-  if (!lastMatch || syncMatchEpoch === null) {
-    liveClockEl.textContent = '--:--.-';
-    return;
-  }
-  liveClockEl.textContent = formatOffset(currentIntendedPosition());
-}, 100);
-
 function scheduleSyncPlay() {
   if (!syncPlayerReady || !lastMatch) return;
   syncLive = false;
@@ -954,12 +943,22 @@ function renderFeed(entries) {
     feedList.innerHTML = '<div class="feedItem fs">nothing heard yet</div>';
     return;
   }
+  const ONE_HOUR_MS = 3600000;
   const VISIBLE_COUNT = 5;
-  const recent = entries.slice(0, VISIBLE_COUNT);
-  const older = entries.slice(VISIBLE_COUNT);
+  const nowMs = Date.now();
+
+  const fresh = entries.filter(e => (nowMs - e.epochMs) < ONE_HOUR_MS);
+  const stale = entries.filter(e => (nowMs - e.epochMs) >= ONE_HOUR_MS);
+
+  const recent = fresh.slice(0, VISIBLE_COUNT);
+  const older = fresh.slice(VISIBLE_COUNT).concat(stale);
 
   feedList.innerHTML = '';
-  recent.forEach(e => feedList.appendChild(buildFeedRow(e)));
+  if (recent.length === 0) {
+    feedList.innerHTML = '<div class="feedItem fs">nothing heard recently</div>';
+  } else {
+    recent.forEach(e => feedList.appendChild(buildFeedRow(e)));
+  }
 
   if (older.length > 0) {
     const details = document.createElement('details');
