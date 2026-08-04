@@ -159,7 +159,7 @@
   <div id="positionsPanel" style="margin-top:24px;">
     <h3>live positions</h3>
     <div id="positionsList"></div>
-    <div id="broadcastNudgeRow" style="margin-top:14px;">
+    <div id="broadcastNudgeRow" style="margin-top:14px; display:none;">
       <div style="font-size:0.85rem; color:#999;">broadcast timing (shifts every phone at once)</div>
       <button id="broadcastNudgeBack" style="margin-top:6px;">- 0.5s</button>
       <button id="broadcastNudgeForward" style="margin-left:8px;">+ 0.5s</button>
@@ -221,20 +221,7 @@ async function startListen() {
         return;
       }
 
-      songTitle.textContent = data.title;
-      songArtist.textContent = data.artist;
-      songOffset.textContent = formatOffset(data.offsetSeconds);
-      if (data.videoId) {
-        const directUrl = 'https://www.youtube.com/watch?v=' + data.videoId + '&t=' + Math.floor(data.offsetSeconds) + 's';
-        videoInfo.innerHTML = '<a href="' + directUrl + '" target="_blank" rel="noopener">open on youtube</a>' +
-          (data.videoDurationSeconds ? ' (' + formatOffset(data.videoDurationSeconds) + ' long)' : '');
-        lastMatch = data;
-        syncWatchBtn.style.display = 'inline-block';
-      } else {
-        videoInfo.textContent = 'no youtube match found';
-        syncWatchBtn.style.display = 'none';
-      }
-      resultEl.style.display = 'block';
+      activateMatch(data, true);
       statusEl.textContent = '';
     } catch (err) {
       statusEl.textContent = 'Request failed. Check connection.';
@@ -286,10 +273,63 @@ setInterval(calibrateClock, 75000);
 let lastMatch = null;
 let syncPlayer = null;
 let syncPlayerReady = false;
+let myMatchKey = null;
+let iAmHost = false;
+let lastSeenAnchorKey = null;
 const syncWatchBtn = document.getElementById('syncWatchBtn');
 const syncCountdown = document.getElementById('syncCountdown');
+const broadcastNudgeRowEl = document.getElementById('broadcastNudgeRow');
 
-syncWatchBtn.addEventListener('click', () => {
+function matchKey(m) {
+  return (m && m.videoId ? m.videoId : '') + '|' + Math.round(m && m.epochMs ? m.epochMs : 0);
+}
+
+function activateMatch(data, isMine) {
+  songTitle.textContent = data.title;
+  songArtist.textContent = data.artist;
+  songOffset.textContent = formatOffset(data.offsetSeconds);
+  resultEl.style.display = 'block';
+
+  if (!data.videoId) {
+    videoInfo.textContent = 'no youtube match found';
+    syncWatchBtn.style.display = 'none';
+    return;
+  }
+
+  const directUrl = 'https://www.youtube.com/watch?v=' + data.videoId + '&t=' + Math.floor(data.offsetSeconds) + 's';
+  videoInfo.innerHTML = '<a href="' + directUrl + '" target="_blank" rel="noopener">open on youtube</a>' +
+    (data.videoDurationSeconds ? ' (' + formatOffset(data.videoDurationSeconds) + ' long)' : '');
+  syncWatchBtn.style.display = 'inline-block';
+
+  const key = matchKey(data);
+  lastMatch = data;
+  lastSeenAnchorKey = key;
+  if (isMine) {
+    myMatchKey = key;
+    iAmHost = true;
+  } else {
+    iAmHost = (myMatchKey !== null && key === myMatchKey);
+  }
+  broadcastNudgeRowEl.style.display = iAmHost ? 'block' : 'none';
+
+  triggerSync();
+}
+
+async function pollRemoteAnchor() {
+  try {
+    const res = await fetch('/api/anchor', { cache: 'no-store' });
+    const anchor = await res.json();
+    if (!anchor || anchor.error || !anchor.videoId || typeof anchor.epochMs !== 'number') return;
+    const key = matchKey(anchor);
+    if (key === lastSeenAnchorKey) return;
+    activateMatch(anchor, false);
+  } catch (err) {}
+}
+setInterval(pollRemoteAnchor, 1500);
+
+syncWatchBtn.addEventListener('click', triggerSync);
+
+function triggerSync() {
   if (!lastMatch || !lastMatch.videoId) return;
   if (!syncPlayer) {
     if (window.YT && window.YT.Player) {
@@ -307,7 +347,7 @@ syncWatchBtn.addEventListener('click', () => {
   } else {
     scheduleSyncPlay();
   }
-});
+}
 
 function createSyncPlayer() {
   syncPlayer = new YT.Player('syncPlayer', {
