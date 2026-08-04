@@ -44,6 +44,11 @@ export default async function handler(request) {
 
   const data = await auddRes.json();
 
+  if (data.status === 'error') {
+    const auddMessage = (data.error && data.error.error_message) ? data.error.error_message : 'unknown audd error';
+    return new Response(JSON.stringify({ error: 'audd: ' + auddMessage }), { status: 200 });
+  }
+
   if (data.status !== 'success' || !data.result) {
     return new Response(JSON.stringify({ error: 'no match found' }), { status: 200 });
   }

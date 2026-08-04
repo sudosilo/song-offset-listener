@@ -144,6 +144,7 @@
       <span id="nudgeValue" style="display:none;">nudge 0.0s</span>
       <button id="nudgeReset">reset</button>
       <a href="#" id="nudgeLogLink" style="margin-left:10px;">log this offset for testing</a>
+      <label style="margin-left:10px;"><input type="checkbox" id="recheckToggle"> auto drift-correct (uses AudD)</label>
     </div>
     <div id="syncPlayer"></div>
   </div>
@@ -468,13 +469,14 @@ function currentIntendedPosition() {
   return lastMatch.offsetSeconds + elapsed + (nudgeMs / 1000);
 }
 
-const RECHECK_INTERVAL_MS = 45000;
+const RECHECK_INTERVAL_MS = 300000;
+let recheckEnabled = false;
 const RECHECK_DRIFT_SANITY_MS = 8000;
 const RECHECK_BLEND_FACTOR = 0.5;
 let recheckInProgress = false;
 
 async function backgroundRecheck() {
-  if (!lastMatch || recheckInProgress) return;
+  if (!recheckEnabled || !lastMatch || recheckInProgress) return;
   recheckInProgress = true;
   try {
     let stream;
@@ -537,6 +539,9 @@ function titleRoughlyMatches(a, b) {
 }
 
 setInterval(backgroundRecheck, RECHECK_INTERVAL_MS);
+document.getElementById('recheckToggle').addEventListener('change', (e) => {
+  recheckEnabled = e.target.checked;
+});
 
 const liveClockEl = document.getElementById('liveClock');
 setInterval(() => {
