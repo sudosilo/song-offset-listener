@@ -156,8 +156,13 @@
     <div id="feedPlayer"></div>
   </div>
 
-  <div id="positionsPanel" style="margin-top:24px;">
-    <h3>live positions</h3>
+  <div id="audioUnlock" style="display:none; margin:12px auto; padding:12px; border:2px solid #1a4fa0; border-radius:10px; background:#eaf1fb; max-width:320px;">
+    <div style="font-size:0.9rem; color:#1a4fa0; margin-bottom:8px;">tap once to allow audio on this phone</div>
+    <button id="audioUnlockBtn">Enable Audio</button>
+  </div>
+
+  <details id="positionsPanel" style="margin-top:24px;">
+    <summary style="cursor:pointer; color:#999; font-size:0.9rem;">live positions</summary>
     <div id="positionsList"></div>
     <div id="broadcastNudgeRow" style="margin-top:14px; display:none;">
       <div style="font-size:0.85rem; color:#999;">broadcast timing (shifts every phone at once)</div>
@@ -165,7 +170,7 @@
       <button id="broadcastNudgeForward" style="margin-left:8px;">+ 0.5s</button>
       <span id="broadcastNudgeStatus" style="margin-left:8px; font-size:0.85rem; color:#999;"></span>
     </div>
-  </div>
+  </details>
 
 <script>
 const listenBtn = document.getElementById('listenBtn');
@@ -212,18 +217,22 @@ async function startListen() {
       form.append('capturedAt', String(captureStartedAt));
       form.append('clipDurationMs', String(RECORD_MS));
 
+      awaitingOwnRecognition = true;
       const res = await fetch('/api/recognize', { method: 'POST', body: form });
       const data = await res.json();
 
       if (data.error) {
+        awaitingOwnRecognition = false;
         statusEl.textContent = 'No match: ' + data.error;
         listenBtn.disabled = false;
         return;
       }
 
       activateMatch(data, true);
+      awaitingOwnRecognition = false;
       statusEl.textContent = '';
     } catch (err) {
+      awaitingOwnRecognition = false;
       statusEl.textContent = 'Request failed. Check connection.';
     }
     listenBtn.disabled = false;
@@ -283,6 +292,34 @@ const broadcastNudgeRowEl = document.getElementById('broadcastNudgeRow');
 function matchKey(m) {
   return (m && m.videoId ? m.videoId : '') + '|' + Math.round(m && m.epochMs ? m.epochMs : 0);
 }
+
+let audioUnlocked = false;
+let awaitingOwnRecognition = false;
+const audioUnlockEl = document.getElementById('audioUnlock');
+const audioUnlockBtn = document.getElementById('audioUnlockBtn');
+
+audioUnlockBtn.addEventListener('click', () => {
+  audioUnlocked = true;
+  audioUnlockEl.style.display = 'none';
+  if (!syncPlayer) {
+    if (window.YT && window.YT.Player) {
+      createSyncPlayer();
+    } else {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.body.appendChild(tag);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function () {
+        if (prev) prev();
+        createSyncPlayer();
+      };
+    }
+  } else if (lastMatch) {
+    scheduleSyncPlay();
+  }
+});
+
+listenBtn.addEventListener('click', () => { audioUnlocked = true; audioUnlockEl.style.display = 'none'; });
 
 function applyDriftCorrection(freshOffsetSeconds, freshEpochMs) {
   if (!lastMatch || syncMatchEpoch === null) return;
@@ -345,6 +382,7 @@ function activateMatch(data, isMine) {
 }
 
 async function pollRemoteAnchor() {
+  if (awaitingOwnRecognition) return;
   try {
     const res = await fetch('/api/anchor', { cache: 'no-store' });
     const anchor = await res.json();
@@ -357,6 +395,10 @@ async function pollRemoteAnchor() {
     if (isSameSong) {
       applyDriftCorrection(anchor.offsetSeconds, anchor.epochMs);
       return;
+    }
+
+    if (!audioUnlocked) {
+      audioUnlockEl.style.display = 'block';
     }
 
     activateMatch(anchor, false);
@@ -888,17 +930,12 @@ function renderFeed(entries) {
     feedList.innerHTML = '<div class="feedItem fs">nothing heard yet</div>';
     return;
   }
-  const ONE_HOUR_MS = 60 * 60 * 1000;
-  const nowMs = Date.now();
-  const recent = entries.filter(e => (nowMs - e.epochMs) < ONE_HOUR_MS);
-  const older = entries.filter(e => (nowMs - e.epochMs) >= ONE_HOUR_MS);
+  const VISIBLE_COUNT = 5;
+  const recent = entries.slice(0, VISIBLE_COUNT);
+  const older = entries.slice(VISIBLE_COUNT);
 
   feedList.innerHTML = '';
-  if (recent.length === 0) {
-    feedList.innerHTML = '<div class="feedItem fs">nothing heard in the last hour</div>';
-  } else {
-    recent.forEach(e => feedList.appendChild(buildFeedRow(e)));
-  }
+  recent.forEach(e => feedList.appendChild(buildFeedRow(e)));
 
   if (older.length > 0) {
     const details = document.createElement('details');
@@ -907,7 +944,7 @@ function renderFeed(entries) {
     summary.style.cursor = 'pointer';
     summary.style.color = '#999';
     summary.style.fontSize = '0.85rem';
-    summary.textContent = 'older than an hour (' + older.length + ')';
+    summary.textContent = 'earlier (' + older.length + ')';
     details.appendChild(summary);
     older.forEach(e => details.appendChild(buildFeedRow(e)));
     feedList.appendChild(details);
