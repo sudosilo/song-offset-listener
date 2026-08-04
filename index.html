@@ -322,6 +322,18 @@ async function pollRemoteAnchor() {
     if (!anchor || anchor.error || !anchor.videoId || typeof anchor.epochMs !== 'number') return;
     const key = matchKey(anchor);
     if (key === lastSeenAnchorKey) return;
+    lastSeenAnchorKey = key;
+
+    const isSameSong = lastMatch && lastMatch.videoId === anchor.videoId;
+    if (isSameSong) {
+      const freshSyncMatchEpoch = anchor.epochMs - anchor.offsetSeconds * 1000 + lastMatch.offsetSeconds * 1000;
+      const drift = freshSyncMatchEpoch - syncMatchEpoch;
+      if (Math.abs(drift) <= RECHECK_DRIFT_SANITY_MS && syncMatchEpoch !== null) {
+        syncMatchEpoch += drift * RECHECK_BLEND_FACTOR;
+      }
+      return;
+    }
+
     activateMatch(anchor, false);
   } catch (err) {}
 }
@@ -413,6 +425,7 @@ async function backgroundRecheck() {
     form.append('audio', blob, 'clip.webm');
     form.append('capturedAt', String(capturedAt));
     form.append('clipDurationMs', String(RECORD_MS));
+    form.append('silent', 'true');
 
     const res = await fetch('/api/recognize', { method: 'POST', body: form });
     const data = await res.json();

@@ -28,6 +28,7 @@ export default async function handler(request) {
   const clipDurationMs = Number(incoming.get('clipDurationMs')) || 9000;
   const capturedAtRaw = Number(incoming.get('capturedAt'));
   const clientCapturedAt = Number.isFinite(capturedAtRaw) && capturedAtRaw > 0 ? capturedAtRaw : null;
+  const silent = incoming.get('silent') === 'true';
 
   const outgoing = new FormData();
   outgoing.append('api_token', token);
@@ -58,7 +59,7 @@ export default async function handler(request) {
   }
 
   let anchorWritten = false;
-  if (offsetSeconds !== null) {
+  if (offsetSeconds !== null && !silent) {
     const epochMs = clientCapturedAt !== null ? clientCapturedAt : Date.now() - clipDurationMs;
     anchorWritten = await writeAnchor({
       title: result.title,
