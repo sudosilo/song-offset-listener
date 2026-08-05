@@ -144,6 +144,10 @@
       <a href="#" id="nudgeLogLink" style="margin-left:10px;">log this offset for testing</a>
       <label style="margin-left:10px;"><input type="checkbox" id="recheckToggle"> auto drift-correct (uses AudD)</label>
     </div>
+    <div id="acousticMeasureRow" style="margin-top:10px;">
+      <button id="measureSyncBtn">Measure Sync (mic)</button>
+      <div id="measureSyncStatus" style="font-size:0.85rem; color:#999; margin-top:6px;"></div>
+    </div>
     <div id="syncPlayer"></div>
   </div>
 
@@ -666,6 +670,140 @@ syncPauseBtn.addEventListener('click', () => {
   syncPaused = !syncPaused;
 });
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function recordAndMeasureLag(durationMs, minLagSec, maxLagSec) {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    return null;
+  }
+  const chunks = [];
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+  recorder.start();
+  await sleep(durationMs);
+  recorder.stop();
+  await stopped;
+  stream.getTracks().forEach(t => t.stop());
+
+  const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let audioBuffer;
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  } catch (err) {
+    audioCtx.close();
+    return null;
+  }
+
+  const sampleRate = audioBuffer.sampleRate;
+  const raw = audioBuffer.getChannelData(0);
+
+  const frameSize = Math.max(1, Math.round(sampleRate * 0.01));
+  const frameCount = Math.floor(raw.length / frameSize);
+  if (frameCount < 20) { audioCtx.close(); return null; }
+
+  const envelope = new Float32Array(frameCount);
+  for (let i = 0; i < frameCount; i++) {
+    let sum = 0;
+    const start = i * frameSize;
+    for (let j = 0; j < frameSize; j++) {
+      const v = raw[start + j];
+      sum += v * v;
+    }
+    envelope[i] = Math.sqrt(sum / frameSize);
+  }
+
+  let mean = 0;
+  for (let i = 0; i < frameCount; i++) mean += envelope[i];
+  mean /= frameCount;
+  let variance = 0;
+  for (let i = 0; i < frameCount; i++) variance += (envelope[i] - mean) * (envelope[i] - mean);
+  variance /= frameCount;
+  audioCtx.close();
+  if (variance < 1e-10) return null;
+
+  const norm = new Float32Array(frameCount);
+  const sd = Math.sqrt(variance);
+  for (let i = 0; i < frameCount; i++) norm[i] = (envelope[i] - mean) / sd;
+
+  const frameHopSeconds = frameSize / sampleRate;
+  const minLagFrames = Math.max(1, Math.round(minLagSec / frameHopSeconds));
+  const maxLagFrames = Math.min(frameCount - 1, Math.round(maxLagSec / frameHopSeconds));
+
+  let bestLag = -1;
+  let bestScore = -Infinity;
+  for (let lag = minLagFrames; lag <= maxLagFrames; lag++) {
+    const n = frameCount - lag;
+    if (n < frameCount * 0.3) break;
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += norm[i] * norm[i + lag];
+    const score = sum / n;
+    if (score > bestScore) {
+      bestScore = score;
+      bestLag = lag;
+    }
+  }
+
+  if (bestLag < 0 || bestScore < 0.12) return null;
+  return bestLag * frameHopSeconds;
+}
+
+const measureSyncBtn = document.getElementById('measureSyncBtn');
+const measureSyncStatus = document.getElementById('measureSyncStatus');
+
+measureSyncBtn.addEventListener('click', async () => {
+  if (!syncLive || !syncPlayer) {
+    measureSyncStatus.textContent = 'not currently synced to a song';
+    return;
+  }
+  measureSyncBtn.disabled = true;
+  measureSyncStatus.textContent = 'listening for the echo (6s)...';
+
+  const magnitude = await recordAndMeasureLag(6000, 0.15, 5.0);
+  if (magnitude === null) {
+    measureSyncStatus.textContent = 'no clear echo detected, try somewhere quieter or closer to the source';
+    measureSyncBtn.disabled = false;
+    return;
+  }
+
+  measureSyncStatus.textContent = 'gap measured at ' + magnitude.toFixed(2) + 's, testing direction...';
+
+  const trialDeltaMs = magnitude * 1000;
+  setNudge(nudgeMs + trialDeltaMs);
+  await sleep(1200);
+
+  const confirmLag = await recordAndMeasureLag(3000, 0.05, Math.min(5.0, magnitude * 2.5));
+  let finalDeltaMs = trialDeltaMs;
+
+  if (confirmLag !== null && confirmLag > magnitude * 1.3) {
+    setNudge(nudgeMs - trialDeltaMs * 2);
+    finalDeltaMs = -trialDeltaMs;
+  }
+
+  measureSyncStatus.textContent = 'applied ' + (finalDeltaMs >= 0 ? '+' : '') + (finalDeltaMs / 1000).toFixed(2) + 's, broadcasting correction to all phones...';
+
+  await applyBroadcastNudge(finalDeltaMs);
+
+  logPlayEvent({
+    event: 'acoustic_measure_correction',
+    title: lastMatch ? lastMatch.title : null,
+    videoId: lastMatch ? lastMatch.videoId : null,
+    position: currentIntendedPosition(),
+    nudgeMs,
+    driftMs: Math.round(finalDeltaMs)
+  });
+
+  measureSyncStatus.textContent = 'done, corrected ' + (finalDeltaMs >= 0 ? '+' : '') + (finalDeltaMs / 1000).toFixed(2) + 's and broadcast it';
+  measureSyncBtn.disabled = false;
+});
 const nudgeLogLink = document.getElementById('nudgeLogLink');
 nudgeLogLink.addEventListener('click', async (e) => {
   e.preventDefault();
