@@ -404,6 +404,7 @@ async function pollRemoteAnchor() {
     const res = await fetch('/api/anchor', { cache: 'no-store' });
     const anchor = await res.json();
     if (!anchor || anchor.error || !anchor.videoId || typeof anchor.epochMs !== 'number') return;
+    if ((Date.now() - anchor.epochMs) > 3600000) return;
     const key = matchKey(anchor);
     if (key === lastSeenAnchorKey) return;
     lastSeenAnchorKey = key;
