@@ -297,7 +297,8 @@ let awaitingOwnRecognition = false;
 const audioUnlockEl = document.getElementById('audioUnlock');
 const audioUnlockBtn = document.getElementById('audioUnlockBtn');
 
-audioUnlockBtn.addEventListener('click', () => {
+function unlockAudio() {
+  if (audioUnlocked) return;
   audioUnlocked = true;
   audioUnlockEl.style.display = 'none';
   if (!syncPlayer) {
@@ -316,9 +317,12 @@ audioUnlockBtn.addEventListener('click', () => {
   } else if (lastMatch) {
     scheduleSyncPlay();
   }
-});
+}
 
-listenBtn.addEventListener('click', () => { audioUnlocked = true; audioUnlockEl.style.display = 'none'; });
+audioUnlockBtn.addEventListener('click', unlockAudio);
+document.body.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+document.body.addEventListener('click', unlockAudio, { once: true });
+
 
 function applyDriftCorrection(freshOffsetSeconds, freshEpochMs) {
   if (!lastMatch || syncMatchEpoch === null) return;
