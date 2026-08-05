@@ -350,10 +350,15 @@ function anchorIsStale(data) {
   if (typeof duration === 'number' && duration > 0) {
     return projected >= duration;
   }
-  return elapsed > 1800;
+  return elapsed > 360;
 }
 
 function activateMatch(data, isMine, skipTriggerSync) {
+  if (!isMine && anchorIsStale(data)) {
+    lastSeenAnchorKey = matchKey(data);
+    return;
+  }
+
   const isSameSongAlreadyActive = lastMatch && data.videoId && lastMatch.videoId === data.videoId && syncLive;
 
   songTitle.textContent = data.title;
@@ -374,13 +379,6 @@ function activateMatch(data, isMine, skipTriggerSync) {
 
   const key = matchKey(data);
   lastSeenAnchorKey = key;
-
-  if (!isMine && anchorIsStale(data)) {
-    songOffset.textContent = formatOffset(data.offsetSeconds);
-    syncCountdown.textContent = 'that song already finished';
-    lastMatch = data;
-    return;
-  }
 
   if (isSameSongAlreadyActive) {
     songOffset.textContent = formatOffset(lastMatch.offsetSeconds);
@@ -428,7 +426,7 @@ async function pollRemoteAnchor() {
       return;
     }
 
-    if (!audioUnlocked) {
+    if (!audioUnlocked && !anchorIsStale(anchor)) {
       audioUnlockEl.style.display = 'block';
     }
 
