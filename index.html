@@ -1062,10 +1062,24 @@ function renderPositions(devices) {
     const isMe = d.deviceId === deviceId;
     const row = document.createElement('div');
     row.className = 'feedItem';
-    row.innerHTML = '<div style="color:#333;font-weight:bold;">' + escapeHtml(d.deviceId) + (isMe ? ' (this phone)' : '') + '</div>' +
+    if (isMe) row.style.cursor = 'default';
+    const nameColor = isMe ? '#333' : '#1a4fa0';
+    row.innerHTML = '<div style="color:' + nameColor + ';font-weight:bold;">' + escapeHtml(d.deviceId) + (isMe ? ' (this phone)' : '') + '</div>' +
       '<div class="fa">' + escapeHtml(d.title || '') + (d.paused ? ' — paused' : '') + '</div>' +
       '<div class="fs">' + formatOffset(d.position || 0) + ' · updated ' + staleSec + 's ago · nudge ' +
       (d.nudgeMs >= 0 ? '+' : '') + (d.nudgeMs / 1000).toFixed(1) + 's</div>';
+    if (!isMe && d.videoId) {
+      row.addEventListener('click', () => {
+        activateMatch({
+          title: d.title,
+          artist: '',
+          videoId: d.videoId,
+          offsetSeconds: d.position || 0,
+          epochMs: d.updatedAtEpochMs,
+          videoDurationSeconds: null
+        }, false);
+      });
+    }
     positionsList.appendChild(row);
   });
 }
