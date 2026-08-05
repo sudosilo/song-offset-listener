@@ -699,6 +699,7 @@ let hostPlayerReady = false;
 let chosenVideo = null;
 let broadcasting = false;
 let broadcastTimer = null;
+let broadcastLifetimeTimer = null;
 
 searchBtn.addEventListener('click', runSearch);
 
@@ -815,6 +816,13 @@ function startBroadcast() {
   pushAnchor();
   logBroadcastStart();
   broadcastTimer = setInterval(pushAnchor, 2000);
+  if (broadcastLifetimeTimer) clearTimeout(broadcastLifetimeTimer);
+  broadcastLifetimeTimer = setTimeout(() => {
+    if (broadcasting) {
+      stopBroadcast();
+      broadcastStatus.textContent = 'stopped automatically after 20 minutes unattended';
+    }
+  }, 1200000);
 }
 
 function stopBroadcast() {
@@ -822,6 +830,7 @@ function stopBroadcast() {
   broadcastBtn.textContent = 'Play and Broadcast';
   broadcastStatus.textContent = 'stopped';
   if (broadcastTimer) clearInterval(broadcastTimer);
+  if (broadcastLifetimeTimer) clearTimeout(broadcastLifetimeTimer);
 }
 
 async function pushAnchor() {
