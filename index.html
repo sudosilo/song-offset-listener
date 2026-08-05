@@ -189,10 +189,18 @@ async function startListen() {
   listenBtn.disabled = true;
   statusEl.textContent = 'Requesting microphone...';
 
+  const activePlayer = (syncLive && syncPlayer) ? syncPlayer : (broadcasting && hostPlayer) ? hostPlayer : null;
+  let wasMutedByListen = false;
+  if (activePlayer && !activePlayer.isMuted()) {
+    activePlayer.mute();
+    wasMutedByListen = true;
+  }
+
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
+    if (wasMutedByListen && activePlayer) activePlayer.unMute();
     statusEl.textContent = 'Microphone permission denied or unavailable.';
     listenBtn.disabled = false;
     return;
@@ -207,6 +215,7 @@ async function startListen() {
 
   recorder.onstop = async () => {
     stream.getTracks().forEach(t => t.stop());
+    if (wasMutedByListen && activePlayer) activePlayer.unMute();
     statusEl.textContent = 'Identifying...';
     const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
 
