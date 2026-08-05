@@ -45,6 +45,8 @@ export default async function handler(request) {
         artist: body.artist || '',
         videoId: body.videoId || null,
         offsetSeconds: typeof body.offsetSeconds === 'number' ? body.offsetSeconds : 0,
+        lat: typeof body.lat === 'number' ? body.lat : null,
+        lng: typeof body.lng === 'number' ? body.lng : null,
         epochMs: body.epochMs || Date.now()
       };
       const payload = JSON.stringify(entry);
