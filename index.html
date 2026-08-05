@@ -732,10 +732,16 @@ function selectVideo(video) {
   chosenTitle.textContent = video.title;
   broadcastPanel.style.display = 'block';
 
+  if (broadcastTimer) {
+    clearInterval(broadcastTimer);
+    broadcastTimer = null;
+  }
+
   if (!hostPlayer) {
     loadYouTubeApiHost();
   } else {
     hostPlayer.cueVideoById(video.videoId);
+    if (hostPlayerReady) startBroadcast();
   }
 }
 
@@ -761,7 +767,7 @@ function createHostPlayer() {
     videoId: chosenVideo.videoId,
     playerVars: { controls: 1 },
     events: {
-      onReady: () => { hostPlayerReady = true; }
+      onReady: () => { hostPlayerReady = true; startBroadcast(); }
     }
   });
 }
