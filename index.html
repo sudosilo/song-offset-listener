@@ -876,18 +876,19 @@ setInterval(pollPositions, 2000);
 pollPositions();
 
 function renderPositions(devices) {
-  if (devices.length === 0) {
-    positionsList.innerHTML = '<div class="feedItem fs">no phones reporting yet</div>';
+  const live = devices.filter(d => (Date.now() - (d.updatedAtEpochMs || 0)) < 60000);
+  if (live.length === 0) {
+    positionsList.innerHTML = '<div class="feedItem fs">no phones reporting right now</div>';
     return;
   }
-  devices.sort((a, b) => (b.updatedAtEpochMs || 0) - (a.updatedAtEpochMs || 0));
+  live.sort((a, b) => (b.updatedAtEpochMs || 0) - (a.updatedAtEpochMs || 0));
   positionsList.innerHTML = '';
-  devices.forEach(d => {
+  live.forEach(d => {
     const staleSec = Math.max(0, Math.round((Date.now() - (d.updatedAtEpochMs || 0)) / 1000));
     const isMe = d.deviceId === deviceId;
     const row = document.createElement('div');
     row.className = 'feedItem';
-    row.innerHTML = '<div class="ft">' + escapeHtml(d.deviceId) + (isMe ? ' (this phone)' : '') + '</div>' +
+    row.innerHTML = '<div style="color:#333;font-weight:bold;">' + escapeHtml(d.deviceId) + (isMe ? ' (this phone)' : '') + '</div>' +
       '<div class="fa">' + escapeHtml(d.title || '') + (d.paused ? ' — paused' : '') + '</div>' +
       '<div class="fs">' + formatOffset(d.position || 0) + ' · updated ' + staleSec + 's ago · nudge ' +
       (d.nudgeMs >= 0 ? '+' : '') + (d.nudgeMs / 1000).toFixed(1) + 's</div>';
