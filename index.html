@@ -648,6 +648,8 @@ renderNudge();
 syncPauseBtn.addEventListener('click', () => {
   if (!syncLive || !syncPlayer) return;
   if (syncPaused) {
+    const target = currentIntendedPosition();
+    syncPlayer.seekTo(Math.max(target, 0), true);
     syncPlayer.playVideo();
     syncPauseBtn.textContent = 'Pause';
   } else {

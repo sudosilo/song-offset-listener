@@ -284,6 +284,9 @@ function setNudge(newValueMs) {
 syncPauseBtn.addEventListener('click', () => {
   if (!syncLive || !ytPlayer) return;
   if (syncPaused) {
+    const elapsed = (now() - anchor.epochMs) / 1000 + (nudgeMs / 1000);
+    const target = anchor.offsetSeconds + elapsed;
+    ytPlayer.seekTo(Math.max(target, 0), true);
     ytPlayer.playVideo();
     syncPauseBtn.textContent = 'Pause';
   } else {
