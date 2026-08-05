@@ -940,6 +940,7 @@ async function pollFeed() {
   }
 }
 
+let feedDetailsOpen = false;
 function renderFeed(entries) {
   if (entries.length === 0) {
     feedList.innerHTML = '<div class="feedItem fs">nothing heard yet</div>';
@@ -965,6 +966,8 @@ function renderFeed(entries) {
   if (older.length > 0) {
     const details = document.createElement('details');
     details.style.marginTop = '10px';
+    details.open = feedDetailsOpen;
+    details.addEventListener('toggle', () => { feedDetailsOpen = details.open; });
     const summary = document.createElement('summary');
     summary.style.cursor = 'pointer';
     summary.style.color = '#999';
