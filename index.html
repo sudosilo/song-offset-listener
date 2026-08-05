@@ -340,7 +340,7 @@ function anchorIsStale(data) {
   return elapsed > 1800;
 }
 
-function activateMatch(data, isMine) {
+function activateMatch(data, isMine, skipTriggerSync) {
   const isSameSongAlreadyActive = lastMatch && data.videoId && lastMatch.videoId === data.videoId && syncLive;
 
   songTitle.textContent = data.title;
@@ -395,7 +395,7 @@ function activateMatch(data, isMine) {
     });
   }
 
-  triggerSync();
+  if (!skipTriggerSync) triggerSync();
 }
 
 async function pollRemoteAnchor() {
@@ -783,6 +783,14 @@ function startBroadcast() {
   broadcasting = true;
   broadcastBtn.textContent = 'Stop Broadcasting';
   broadcastStatus.textContent = 'broadcasting...';
+  activateMatch({
+    title: chosenVideo.title,
+    artist: chosenVideo.channel,
+    videoId: chosenVideo.videoId,
+    offsetSeconds: hostPlayer.getCurrentTime(),
+    epochMs: now(),
+    videoDurationSeconds: null
+  }, true, true);
   pushAnchor();
   logBroadcastStart();
   broadcastTimer = setInterval(pushAnchor, 2000);
