@@ -1,4 +1,5 @@
 import { findYouTubeMatch } from '../lib/youtube.js';
+import { findYouTubeViaMusicBrainz } from '../lib/musicbrainz.js';
 import { writeAnchor } from '../lib/anchor-store.js';
 
 export const config = { runtime: 'edge' };
@@ -61,10 +62,20 @@ export default async function handler(request) {
     const cacheKey = 'songsync:ytcache:' + encodeURIComponent((result.title + '|' + result.artist).toLowerCase());
     match = await readCache(cacheKey);
     if (match === null) {
+      let mbResult = null;
       try {
-        match = await findYouTubeMatch(result.title, result.artist);
+        mbResult = await findYouTubeViaMusicBrainz(result.title, result.artist);
       } catch (err) {
-        match = null;
+        mbResult = null;
+      }
+      if (mbResult && mbResult.videoId) {
+        match = { videoId: mbResult.videoId, durationSeconds: mbResult.durationSeconds };
+      } else {
+        try {
+          match = await findYouTubeMatch(result.title, result.artist);
+        } catch (err) {
+          match = null;
+        }
       }
       if (match) await writeCache(cacheKey, match);
     }
