@@ -144,6 +144,12 @@
       <label style="margin-left:10px;"><input type="checkbox" id="recheckToggle"> auto drift-correct (uses AudD)</label>
     </div>
     <div id="acousticMeasureRow" style="margin-top:10px;">
+      <select id="bandSelect" style="margin-right:8px;">
+        <option value="full">full range</option>
+        <option value="lows">lows only</option>
+        <option value="mids">mids only</option>
+        <option value="highs">highs only</option>
+      </select>
       <button id="measureSyncBtn">Measure Sync (mic)</button>
       <div id="measureSyncStatus" style="font-size:0.85rem; color:#999; margin-top:6px;"></div>
     </div>
@@ -673,7 +679,38 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function recordAndMeasureLag(durationMs, minLagSec, maxLagSec) {
+async function applyBandFilter(audioBuffer, band) {
+  if (band === 'full') return audioBuffer;
+
+  const offlineCtx = new OfflineAudioContext(
+    audioBuffer.numberOfChannels,
+    audioBuffer.length,
+    audioBuffer.sampleRate
+  );
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  const filter = offlineCtx.createBiquadFilter();
+
+  if (band === 'lows') {
+    filter.type = 'lowpass';
+    filter.frequency.value = 250;
+  } else if (band === 'highs') {
+    filter.type = 'highpass';
+    filter.frequency.value = 4000;
+  } else {
+    filter.type = 'bandpass';
+    filter.frequency.value = 1000;
+    filter.Q.value = 0.4;
+  }
+
+  source.connect(filter);
+  filter.connect(offlineCtx.destination);
+  source.start(0);
+  return await offlineCtx.startRendering();
+}
+
+async function recordAndMeasureLag(durationMs, minLagSec, maxLagSec, band) {
+  band = band || 'full';
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -702,8 +739,15 @@ async function recordAndMeasureLag(durationMs, minLagSec, maxLagSec) {
     return null;
   }
 
-  const sampleRate = audioBuffer.sampleRate;
-  const raw = audioBuffer.getChannelData(0);
+  let filteredBuffer;
+  try {
+    filteredBuffer = await applyBandFilter(audioBuffer, band);
+  } catch (err) {
+    filteredBuffer = audioBuffer;
+  }
+
+  const sampleRate = filteredBuffer.sampleRate;
+  const raw = filteredBuffer.getChannelData(0);
 
   const frameSize = Math.max(1, Math.round(sampleRate * 0.01));
   const frameCount = Math.floor(raw.length / frameSize);
@@ -763,12 +807,13 @@ measureSyncBtn.addEventListener('click', async () => {
     measureSyncStatus.textContent = 'not currently synced to a song';
     return;
   }
+  const band = document.getElementById('bandSelect').value;
   measureSyncBtn.disabled = true;
-  measureSyncStatus.textContent = 'listening for the echo (6s)...';
+  measureSyncStatus.textContent = 'listening for the echo (' + band + ', 6s)...';
 
-  const magnitude = await recordAndMeasureLag(6000, 0.15, 5.0);
+  const magnitude = await recordAndMeasureLag(6000, 0.15, 5.0, band);
   if (magnitude === null) {
-    measureSyncStatus.textContent = 'no clear echo detected, try somewhere quieter or closer to the source';
+    measureSyncStatus.textContent = 'no clear echo detected in this band, try full range or somewhere quieter';
     measureSyncBtn.disabled = false;
     return;
   }
@@ -779,7 +824,7 @@ measureSyncBtn.addEventListener('click', async () => {
   setNudge(nudgeMs + trialDeltaMs);
   await sleep(1200);
 
-  const confirmLag = await recordAndMeasureLag(3000, 0.05, Math.min(5.0, magnitude * 2.5));
+  const confirmLag = await recordAndMeasureLag(3000, 0.05, Math.min(5.0, magnitude * 2.5), band);
   let finalDeltaMs = trialDeltaMs;
 
   if (confirmLag !== null && confirmLag > magnitude * 1.3) {
