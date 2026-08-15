@@ -682,6 +682,9 @@ syncPauseBtn.addEventListener('click', () => {
       const pausedDurationMs = now() - pauseStartedAt;
       syncMatchEpoch += pausedDurationMs;
       pauseStartedAt = null;
+      if (iAmHost) {
+        applyBroadcastNudge(-pausedDurationMs);
+      }
     }
     syncPlayer.playVideo();
     syncPauseBtn.textContent = 'Pause';
