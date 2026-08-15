@@ -593,6 +593,13 @@ document.getElementById('recheckToggle').addEventListener('change', (e) => {
 });
 
 function scheduleSyncPlay() {
+  logPlayEvent({
+    event: 'schedule_sync_play_called',
+    title: lastMatch ? lastMatch.title : null,
+    videoId: lastMatch ? lastMatch.videoId : null,
+    position: currentIntendedPosition(),
+    nudgeMs
+  });
   if (!syncPlayerReady || !lastMatch) return;
   syncLive = false;
   const joiningLate = (typeof lastMatch.epochMs === 'number') && (now() - lastMatch.epochMs > 10000);
@@ -662,6 +669,14 @@ function renderNudge() {
 function setNudge(newValueMs) {
   nudgeMs = newValueMs;
   renderNudge();
+  logPlayEvent({
+    event: 'nudge_tap_debug',
+    title: lastMatch ? lastMatch.title : null,
+    videoId: lastMatch ? lastMatch.videoId : null,
+    position: currentIntendedPosition(),
+    nudgeMs: newValueMs,
+    driftMs: (syncLive ? 1 : 0) + (syncPlayer ? 2 : 0)
+  });
   if (syncLive && syncPlayer) {
     const target = currentIntendedPosition();
     syncPlayer.seekTo(Math.max(target, 0), true);
