@@ -152,6 +152,7 @@
       </select>
       <button id="measureSyncBtn">Measure Sync (mic)</button>
       <div id="measureSyncStatus" style="font-size:0.85rem; color:#999; margin-top:6px;"></div>
+      <label style="display:block; margin-top:6px; font-size:0.85rem; color:#999;"><input type="checkbox" id="autoTwinToggle"> local twin auto-correct (mic, free, no API)</label>
     </div>
     <div id="syncPlayer"></div>
   </div>
@@ -838,23 +839,34 @@ async function recordAndMeasureLag(durationMs, minLagSec, maxLagSec, band) {
 const measureSyncBtn = document.getElementById('measureSyncBtn');
 const measureSyncStatus = document.getElementById('measureSyncStatus');
 
-measureSyncBtn.addEventListener('click', async () => {
+async function runAcousticMeasurement(band, isAutomatic) {
   if (!syncLive || !syncPlayer) {
-    measureSyncStatus.textContent = 'not currently synced to a song';
+    if (!isAutomatic) measureSyncStatus.textContent = 'not currently synced to a song';
     return;
   }
-  const band = document.getElementById('bandSelect').value;
-  measureSyncBtn.disabled = true;
-  measureSyncStatus.textContent = 'listening for the echo (' + band + ', 6s)...';
+  if (!isAutomatic) {
+    measureSyncBtn.disabled = true;
+    measureSyncStatus.textContent = 'listening for the echo (' + band + ', 6s)...';
+  }
 
   const magnitude = await recordAndMeasureLag(6000, 0.15, 5.0, band);
   if (magnitude === null) {
-    measureSyncStatus.textContent = 'no clear echo detected in this band, try full range or somewhere quieter';
-    measureSyncBtn.disabled = false;
+    if (!isAutomatic) {
+      measureSyncStatus.textContent = 'no clear echo detected in this band, try full range or somewhere quieter';
+      measureSyncBtn.disabled = false;
+    }
     return;
   }
 
-  measureSyncStatus.textContent = 'gap measured at ' + magnitude.toFixed(2) + 's, testing direction...';
+  if (magnitude < 0.2) {
+    if (!isAutomatic) {
+      measureSyncStatus.textContent = 'already within 0.2s, no correction needed';
+      measureSyncBtn.disabled = false;
+    }
+    return;
+  }
+
+  if (!isAutomatic) measureSyncStatus.textContent = 'gap measured at ' + magnitude.toFixed(2) + 's, testing direction...';
 
   const trialDeltaMs = magnitude * 1000;
   setNudge(nudgeMs + trialDeltaMs);
@@ -868,12 +880,14 @@ measureSyncBtn.addEventListener('click', async () => {
     finalDeltaMs = -trialDeltaMs;
   }
 
-  measureSyncStatus.textContent = 'applied ' + (finalDeltaMs >= 0 ? '+' : '') + (finalDeltaMs / 1000).toFixed(2) + 's, broadcasting correction to all phones...';
+  if (!isAutomatic) measureSyncStatus.textContent = 'applied ' + (finalDeltaMs >= 0 ? '+' : '') + (finalDeltaMs / 1000).toFixed(2) + 's, broadcasting correction to all phones...';
 
-  await applyBroadcastNudge(finalDeltaMs);
+  if (iAmHost) {
+    await applyBroadcastNudge(finalDeltaMs);
+  }
 
   logPlayEvent({
-    event: 'acoustic_measure_correction',
+    event: isAutomatic ? 'acoustic_twin_correction' : 'acoustic_measure_correction',
     title: lastMatch ? lastMatch.title : null,
     videoId: lastMatch ? lastMatch.videoId : null,
     position: currentIntendedPosition(),
@@ -881,9 +895,32 @@ measureSyncBtn.addEventListener('click', async () => {
     driftMs: Math.round(finalDeltaMs)
   });
 
-  measureSyncStatus.textContent = 'done, corrected ' + (finalDeltaMs >= 0 ? '+' : '') + (finalDeltaMs / 1000).toFixed(2) + 's and broadcast it';
-  measureSyncBtn.disabled = false;
+  if (!isAutomatic) {
+    measureSyncStatus.textContent = 'done, corrected ' + (finalDeltaMs >= 0 ? '+' : '') + (finalDeltaMs / 1000).toFixed(2) + 's and broadcast it';
+    measureSyncBtn.disabled = false;
+  }
+}
+
+measureSyncBtn.addEventListener('click', async () => {
+  const band = document.getElementById('bandSelect').value;
+  await runAcousticMeasurement(band, false);
 });
+
+let autoTwinEnabled = false;
+let autoTwinRunning = false;
+document.getElementById('autoTwinToggle').addEventListener('change', (e) => {
+  autoTwinEnabled = e.target.checked;
+});
+setInterval(async () => {
+  if (!autoTwinEnabled || autoTwinRunning) return;
+  autoTwinRunning = true;
+  try {
+    const band = document.getElementById('bandSelect').value;
+    await runAcousticMeasurement(band, true);
+  } finally {
+    autoTwinRunning = false;
+  }
+}, 45000);
 
 const searchInput = document.getElementById('searchInput');
 const searchBtn = document.getElementById('searchBtn');
