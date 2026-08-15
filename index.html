@@ -169,6 +169,11 @@
     <button id="audioUnlockBtn">Enable Audio</button>
   </div>
 
+  <details id="nearbyPanel" style="margin-top:24px; text-align:left; width:100%; max-width:420px;" open>
+    <summary style="cursor:pointer; color:#999; font-size:0.9rem;">nearby broadcasts</summary>
+    <div id="nearbyList"></div>
+  </details>
+
   <details id="positionsPanel" style="margin-top:24px; text-align:left; width:100%; max-width:420px;">
     <summary style="cursor:pointer; color:#999; font-size:0.9rem;">live positions</summary>
     <div id="positionsList"></div>
@@ -233,6 +238,11 @@ async function startListen() {
       form.append('audio', blob, 'clip.webm');
       form.append('capturedAt', String(captureStartedAt));
       form.append('clipDurationMs', String(RECORD_MS));
+      const loc = await getMyLocation();
+      if (loc) {
+        form.append('lat', String(loc.lat));
+        form.append('lng', String(loc.lng));
+      }
 
       awaitingOwnRecognition = true;
       const res = await fetch('/api/recognize', { method: 'POST', body: form });
@@ -420,8 +430,10 @@ function activateMatch(data, isMine, skipTriggerSync) {
 
 async function pollRemoteAnchor() {
   if (awaitingOwnRecognition) return;
+  const loc = await getMyLocation();
+  if (!loc) return;
   try {
-    const res = await fetch('/api/anchor', { cache: 'no-store' });
+    const res = await fetch('/api/anchor?lat=' + loc.lat + '&lng=' + loc.lng, { cache: 'no-store' });
     const anchor = await res.json();
     if (!anchor || anchor.error || !anchor.videoId || typeof anchor.epochMs !== 'number') return;
     if ((Date.now() - anchor.epochMs) > 3600000) return;
@@ -998,13 +1010,20 @@ function stopBroadcast() {
 
 async function pushAnchor() {
   if (!hostPlayer || !chosenVideo) return;
+  const loc = await getMyLocation();
+  if (!loc) {
+    broadcastStatus.textContent = 'location needed to broadcast, allow location access';
+    return;
+  }
   const currentTime = hostPlayer.getCurrentTime();
   const payload = {
     title: chosenVideo.title,
     artist: chosenVideo.channel,
     videoId: chosenVideo.videoId,
     offsetSeconds: currentTime,
-    epochMs: now()
+    epochMs: now(),
+    lat: loc.lat,
+    lng: loc.lng
   };
   try {
     await fetch('/api/anchor', {
@@ -1031,6 +1050,12 @@ function getCoarseLocation() {
       { timeout: 4000, maximumAge: 300000 }
     );
   });
+}
+
+let myLocationPromise = null;
+function getMyLocation() {
+  if (!myLocationPromise) myLocationPromise = getCoarseLocation();
+  return myLocationPromise;
 }
 
 async function logBroadcastStart() {
@@ -1093,6 +1118,51 @@ async function pollPositions() {
   } catch (err) {}
 }
 setInterval(pollPositions, 2000);
+
+const nearbyList = document.getElementById('nearbyList');
+
+async function pollNearbyBroadcasts() {
+  try {
+    const res = await fetch('/api/anchor?list=1', { cache: 'no-store' });
+    const data = await res.json();
+    const anchors = (data.anchors || []).filter(a => {
+      if (!a.videoId || typeof a.epochMs !== 'number') return false;
+      return (Date.now() - a.epochMs) < 3600000 && !anchorIsStale(a);
+    });
+
+    let positionsData = [];
+    try {
+      const posRes = await fetch('/api/positions', { cache: 'no-store' });
+      const posJson = await posRes.json();
+      positionsData = posJson.devices || [];
+    } catch (err) {}
+
+    renderNearby(anchors, positionsData);
+  } catch (err) {}
+}
+setInterval(pollNearbyBroadcasts, 3000);
+
+function renderNearby(anchors, positionsData) {
+  if (anchors.length === 0) {
+    nearbyList.innerHTML = '<div class="feedItem fs">no broadcasts active nearby right now</div>';
+    return;
+  }
+  anchors.sort((a, b) => b.epochMs - a.epochMs);
+  nearbyList.innerHTML = '';
+  anchors.forEach(a => {
+    const count = positionsData.filter(d =>
+      d.videoId === a.videoId && (Date.now() - (d.updatedAtEpochMs || 0)) < 60000
+    ).length;
+    const row = document.createElement('div');
+    row.className = 'feedItem';
+    row.innerHTML = '<div class="ft">' + escapeHtml(a.title) + '</div>' +
+      '<div class="fa">' + escapeHtml(a.artist || '') + '</div>' +
+      '<div class="fs">' + (a.geohash || '') + ' region, ' + count + (count === 1 ? ' phone listening' : ' phones listening') + '</div>';
+    row.addEventListener('click', () => activateMatch(a, false));
+    nearbyList.appendChild(row);
+  });
+}
+
 pollPositions();
 
 function renderPositions(devices) {
@@ -1135,8 +1205,14 @@ document.getElementById('broadcastNudgeForward').addEventListener('click', () =>
 
 async function applyBroadcastNudge(deltaMs) {
   const statusEl = document.getElementById('broadcastNudgeStatus');
+  const loc = await getMyLocation();
+  if (!loc) {
+    statusEl.textContent = 'location needed to adjust broadcast timing';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+    return;
+  }
   try {
-    const res = await fetch('/api/anchor', { cache: 'no-store' });
+    const res = await fetch('/api/anchor?lat=' + loc.lat + '&lng=' + loc.lng, { cache: 'no-store' });
     const anchor = await res.json();
     if (!anchor || anchor.error || typeof anchor.epochMs !== 'number') {
       statusEl.textContent = 'no active broadcast to adjust';
@@ -1149,7 +1225,9 @@ async function applyBroadcastNudge(deltaMs) {
       offsetSeconds: anchor.offsetSeconds,
       epochMs: anchor.epochMs - deltaMs,
       videoId: anchor.videoId,
-      videoDurationSeconds: anchor.videoDurationSeconds
+      videoDurationSeconds: anchor.videoDurationSeconds,
+      lat: loc.lat,
+      lng: loc.lng
     };
     await fetch('/api/anchor', {
       method: 'POST',

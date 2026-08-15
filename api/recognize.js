@@ -29,6 +29,10 @@ export default async function handler(request) {
   const clipDurationMs = Number(incoming.get('clipDurationMs')) || 9000;
   const capturedAtRaw = Number(incoming.get('capturedAt'));
   const clientCapturedAt = Number.isFinite(capturedAtRaw) && capturedAtRaw > 0 ? capturedAtRaw : null;
+  const latRaw = parseFloat(incoming.get('lat'));
+  const lngRaw = parseFloat(incoming.get('lng'));
+  const clientLat = isNaN(latRaw) ? null : latRaw;
+  const clientLng = isNaN(lngRaw) ? null : lngRaw;
   const silent = incoming.get('silent') === 'true';
 
   const outgoing = new FormData();
@@ -82,7 +86,7 @@ export default async function handler(request) {
   }
 
   let anchorWritten = false;
-  if (offsetSeconds !== null && !silent) {
+  if (offsetSeconds !== null && !silent && clientLat !== null && clientLng !== null) {
     const epochMs = clientCapturedAt !== null ? clientCapturedAt : Date.now() - clipDurationMs;
     anchorWritten = await writeAnchor({
       title: result.title,
@@ -90,13 +94,17 @@ export default async function handler(request) {
       offsetSeconds,
       epochMs,
       videoId: match ? match.videoId : null,
-      videoDurationSeconds: match ? match.durationSeconds : null
+      videoDurationSeconds: match ? match.durationSeconds : null,
+      lat: clientLat,
+      lng: clientLng
     });
     await appendLog({
       title: result.title,
       artist: result.artist,
       videoId: match ? match.videoId : null,
       offsetSeconds,
+      lat: clientLat,
+      lng: clientLng,
       epochMs
     });
   }
