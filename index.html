@@ -673,15 +673,21 @@ nudgeForwardBtn.addEventListener('click', () => setNudge(nudgeMs + 500));
 nudgeResetBtn.addEventListener('click', () => setNudge(0));
 renderNudge();
 
+let pauseStartedAt = null;
+
 syncPauseBtn.addEventListener('click', () => {
   if (!syncLive || !syncPlayer) return;
   if (syncPaused) {
-    const target = currentIntendedPosition();
-    syncPlayer.seekTo(Math.max(target, 0), true);
+    if (pauseStartedAt !== null) {
+      const pausedDurationMs = now() - pauseStartedAt;
+      syncMatchEpoch += pausedDurationMs;
+      pauseStartedAt = null;
+    }
     syncPlayer.playVideo();
     syncPauseBtn.textContent = 'Pause';
   } else {
     syncPlayer.pauseVideo();
+    pauseStartedAt = now();
     syncPauseBtn.textContent = 'Resume';
   }
   syncPaused = !syncPaused;

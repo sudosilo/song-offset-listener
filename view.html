@@ -147,12 +147,19 @@ async function pollAnchor() {
     const res = await fetch('/api/anchor', { cache: 'no-store' });
     const data = await res.json();
     if (!data.error) {
-      anchor = data;
-      lastFetchedAt = Date.now();
-      titleEl.textContent = anchor.title;
-      artistEl.textContent = anchor.artist;
-      statusEl.textContent = 'synced';
-      joinBtn.disabled = !anchor.videoId;
+      const isSameSong = anchor && anchor.videoId && data.videoId === anchor.videoId;
+      if (isSameSong) {
+        lastFetchedAt = Date.now();
+        statusEl.textContent = 'synced';
+        joinBtn.disabled = !anchor.videoId;
+      } else {
+        anchor = data;
+        lastFetchedAt = Date.now();
+        titleEl.textContent = anchor.title;
+        artistEl.textContent = anchor.artist;
+        statusEl.textContent = 'synced';
+        joinBtn.disabled = !anchor.videoId;
+      }
     } else if (!anchor) {
       statusEl.textContent = data.error;
     }
@@ -281,16 +288,21 @@ function setNudge(newValueMs) {
   }
 }
 
+let pauseStartedAt = null;
+
 syncPauseBtn.addEventListener('click', () => {
   if (!syncLive || !ytPlayer) return;
   if (syncPaused) {
-    const elapsed = (now() - anchor.epochMs) / 1000 + (nudgeMs / 1000);
-    const target = anchor.offsetSeconds + elapsed;
-    ytPlayer.seekTo(Math.max(target, 0), true);
+    if (pauseStartedAt !== null) {
+      const pausedDurationMs = now() - pauseStartedAt;
+      anchor.epochMs += pausedDurationMs;
+      pauseStartedAt = null;
+    }
     ytPlayer.playVideo();
     syncPauseBtn.textContent = 'Pause';
   } else {
     ytPlayer.pauseVideo();
+    pauseStartedAt = now();
     syncPauseBtn.textContent = 'Resume';
   }
   syncPaused = !syncPaused;
