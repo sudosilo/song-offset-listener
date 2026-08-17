@@ -1,6 +1,7 @@
 import { findYouTubeMatch } from '../lib/youtube.js';
 import { findYouTubeViaMusicBrainz } from '../lib/musicbrainz.js';
 import { writeAnchor } from '../lib/anchor-store.js';
+import { findBpmAndKey } from '../lib/getsongbpm.js';
 
 export const config = { runtime: 'edge' };
 
@@ -65,7 +66,12 @@ export default async function handler(request) {
   if (!silent) {
     const cacheKey = 'songsync:ytcache:' + encodeURIComponent((result.title + '|' + result.artist).toLowerCase());
     match = await readCache(cacheKey);
-    if (match === null) {
+    if (match === null) match = {};
+    if (!match.title) { match.title = result.title; match.artist = result.artist; }
+
+    let changed = false;
+
+    if (!match.videoId) {
       let mbResult = null;
       try {
         mbResult = await findYouTubeViaMusicBrainz(result.title, result.artist);
@@ -73,16 +79,41 @@ export default async function handler(request) {
         mbResult = null;
       }
       if (mbResult && mbResult.videoId) {
-        match = { videoId: mbResult.videoId, durationSeconds: mbResult.durationSeconds };
+        match.videoId = mbResult.videoId;
+        match.durationSeconds = mbResult.durationSeconds;
+        changed = true;
       } else {
+        let ytResult = null;
         try {
-          match = await findYouTubeMatch(result.title, result.artist);
+          ytResult = await findYouTubeMatch(result.title, result.artist);
         } catch (err) {
-          match = null;
+          ytResult = null;
+        }
+        if (ytResult) {
+          match.videoId = ytResult.videoId;
+          match.durationSeconds = ytResult.durationSeconds;
+          changed = true;
         }
       }
-      if (match) await writeCache(cacheKey, match);
     }
+
+    if (typeof match.bpm !== 'number') {
+      let bpmResult = null;
+      try {
+        bpmResult = await findBpmAndKey(result.title, result.artist);
+      } catch (err) {
+        bpmResult = null;
+      }
+      if (bpmResult) {
+        match.bpm = bpmResult.bpm;
+        match.key = bpmResult.key;
+        changed = true;
+        await indexBpm(cacheKey, bpmResult.bpm);
+      }
+    }
+
+    if (changed) await writeCache(cacheKey, match);
+    if (!match.videoId && !match.bpm && typeof match.cueIn !== 'number') match = null;
   }
 
   let anchorWritten = false;
@@ -117,8 +148,24 @@ export default async function handler(request) {
     anchorWritten,
     videoId: match ? match.videoId : null,
     videoDurationSeconds: match ? match.durationSeconds : null,
+    bpm: match ? match.bpm : null,
+    key: match ? match.key : null,
     raw: result
   }), { status: 200, headers: { 'content-type': 'application/json' } });
+}
+
+async function indexBpm(cacheKey, bpm) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return false;
+  try {
+    await fetch(`${url}/zadd/songsync:bpmindex/${bpm}/${encodeURIComponent(cacheKey)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return true;
+  } catch (err) {
+    return false;
+  }
 }
 
 async function readCache(key) {

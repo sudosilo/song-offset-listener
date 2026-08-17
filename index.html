@@ -154,6 +154,13 @@
       <div id="measureSyncStatus" style="font-size:0.85rem; color:#999; margin-top:6px;"></div>
       <label style="display:block; margin-top:6px; font-size:0.85rem; color:#999;"><input type="checkbox" id="autoTwinToggle"> local twin auto-correct (mic, free, no API)</label>
     </div>
+    <div id="cueTagRow" style="margin-top:10px; font-size:0.85rem; color:#999;">
+      <div>tag cue points for this song (seconds)</div>
+      <input id="cueInInput" type="number" step="0.5" placeholder="cue in" style="width:70px; margin-right:6px;">
+      <input id="cueOutInput" type="number" step="0.5" placeholder="cue out" style="width:70px; margin-right:6px;">
+      <button id="cueTagBtn">Save Cue Points</button>
+      <div id="cueTagStatus" style="margin-top:4px;"></div>
+    </div>
     <div id="syncPlayer"></div>
   </div>
 
@@ -178,6 +185,7 @@
   <details id="positionsPanel" style="margin-top:24px; text-align:left; width:100%; max-width:420px;">
     <summary style="cursor:pointer; color:#999; font-size:0.9rem;">live positions</summary>
     <div id="positionsList"></div>
+    <div id="beatmatchQueued" style="margin-top:10px; font-size:0.85rem; color:#999;"></div>
     <div id="broadcastNudgeRow" style="margin-top:14px; display:none;">
       <div style="font-size:0.85rem; color:#999;">broadcast timing (shifts every phone at once)</div>
       <button id="broadcastNudgeBack" style="margin-top:6px;">- 0.5s</button>
@@ -425,6 +433,8 @@ function activateMatch(data, isMine, skipTriggerSync) {
       nudgeMs: 0
     });
   }
+
+  fetchBeatmatchCandidate(data.title, data.artist);
 
   if (!skipTriggerSync) triggerSync();
 }
@@ -1168,6 +1178,86 @@ function reportActivePosition() {
   }).catch(() => {});
 }
 setInterval(reportActivePosition, 1500);
+
+let beatmatchCandidate = null;
+let beatmatchCueOut = null;
+let beatmatchHandedOff = false;
+const beatmatchQueuedEl = document.getElementById('beatmatchQueued');
+
+async function fetchBeatmatchCandidate(title, artist) {
+  beatmatchCandidate = null;
+  beatmatchCueOut = null;
+  beatmatchHandedOff = false;
+  beatmatchQueuedEl.textContent = '';
+  try {
+    const res = await fetch('/api/beatmatch?title=' + encodeURIComponent(title) + '&artist=' + encodeURIComponent(artist), { cache: 'no-store' });
+    const data = await res.json();
+    if (data.currentCueOut) beatmatchCueOut = data.currentCueOut;
+    if (data.found && data.candidate) {
+      beatmatchCandidate = data.candidate;
+      beatmatchQueuedEl.textContent = 'queued next: ' + beatmatchCandidate.title + ' (cue in at ' + formatOffset(beatmatchCandidate.cueIn) + ')';
+    } else if (beatmatchCueOut) {
+      beatmatchQueuedEl.textContent = 'cue out tagged at ' + formatOffset(beatmatchCueOut) + ', no beatmatched follow-up queued yet';
+    }
+  } catch (err) {}
+}
+
+async function checkBeatmatchHandoff() {
+  if (!iAmHost || beatmatchHandedOff || !beatmatchCandidate || typeof beatmatchCueOut !== 'number') return;
+  if (currentIntendedPosition() < beatmatchCueOut) return;
+  beatmatchHandedOff = true;
+  const loc = await getMyLocation();
+  if (!loc) return;
+  try {
+    await fetch('/api/anchor', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: beatmatchCandidate.title,
+        artist: beatmatchCandidate.artist,
+        videoId: beatmatchCandidate.videoId,
+        offsetSeconds: beatmatchCandidate.cueIn,
+        epochMs: now(),
+        videoDurationSeconds: beatmatchCandidate.durationSeconds,
+        lat: loc.lat,
+        lng: loc.lng
+      })
+    });
+    logPlayEvent({
+      event: 'beatmatch_handoff',
+      title: beatmatchCandidate.title,
+      videoId: beatmatchCandidate.videoId,
+      position: beatmatchCandidate.cueIn,
+      nudgeMs: 0
+    });
+  } catch (err) {}
+}
+setInterval(checkBeatmatchHandoff, 2000);
+
+document.getElementById('cueTagBtn').addEventListener('click', async () => {
+  const cueTagStatus = document.getElementById('cueTagStatus');
+  if (!lastMatch) {
+    cueTagStatus.textContent = 'no song currently active';
+    return;
+  }
+  const cueIn = parseFloat(document.getElementById('cueInInput').value);
+  const cueOut = parseFloat(document.getElementById('cueOutInput').value);
+  if (isNaN(cueIn) || isNaN(cueOut)) {
+    cueTagStatus.textContent = 'enter both cue in and cue out';
+    return;
+  }
+  try {
+    const res = await fetch('/api/tag-cue', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: lastMatch.title, artist: lastMatch.artist, cueIn, cueOut })
+    });
+    const data = await res.json();
+    cueTagStatus.textContent = data.ok ? 'saved' : (data.error || 'failed to save');
+  } catch (err) {
+    cueTagStatus.textContent = 'failed to save';
+  }
+});
 
 const positionsList = document.getElementById('positionsList');
 
