@@ -116,9 +116,12 @@ export default async function handler(request) {
     if (!match.videoId && !match.bpm && typeof match.cueIn !== 'number') match = null;
   }
 
+  const clipEndAnchorMs = clientCapturedAt !== null ? (clientCapturedAt + clipDurationMs) : Date.now();
+  const RESIDUAL_TUNE_MS = 0;
+  const epochMs = clipEndAnchorMs + RESIDUAL_TUNE_MS;
+
   let anchorWritten = false;
   if (offsetSeconds !== null && !silent && clientLat !== null && clientLng !== null) {
-    const epochMs = clientCapturedAt !== null ? clientCapturedAt : Date.now() - clipDurationMs;
     anchorWritten = await writeAnchor({
       title: result.title,
       artist: result.artist,
@@ -144,7 +147,7 @@ export default async function handler(request) {
     title: result.title,
     artist: result.artist,
     offsetSeconds,
-    epochMs: offsetSeconds !== null ? (clientCapturedAt !== null ? clientCapturedAt : Date.now() - clipDurationMs) : null,
+    epochMs: offsetSeconds !== null ? epochMs : null,
     anchorWritten,
     videoId: match ? match.videoId : null,
     videoDurationSeconds: match ? match.durationSeconds : null,
