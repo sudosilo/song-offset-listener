@@ -34,6 +34,8 @@ export default async function handler(request) {
   const lngRaw = parseFloat(incoming.get('lng'));
   const clientLat = isNaN(latRaw) ? null : latRaw;
   const clientLng = isNaN(lngRaw) ? null : lngRaw;
+  const localBpmRaw = parseFloat(incoming.get('localBpm'));
+  const clientLocalBpm = isNaN(localBpmRaw) ? null : localBpmRaw;
   const silent = incoming.get('silent') === 'true';
 
   const outgoing = new FormData();
@@ -98,17 +100,25 @@ export default async function handler(request) {
     }
 
     if (typeof match.bpm !== 'number') {
-      let bpmResult = null;
-      try {
-        bpmResult = await findBpmAndKey(result.title, result.artist);
-      } catch (err) {
-        bpmResult = null;
-      }
-      if (bpmResult) {
-        match.bpm = bpmResult.bpm;
-        match.key = bpmResult.key;
+      if (clientLocalBpm !== null) {
+        match.bpm = clientLocalBpm;
+        match.bpmSource = 'local';
         changed = true;
-        await indexBpm(cacheKey, bpmResult.bpm);
+        await indexBpm(cacheKey, clientLocalBpm);
+      } else {
+        let bpmResult = null;
+        try {
+          bpmResult = await findBpmAndKey(result.title, result.artist);
+        } catch (err) {
+          bpmResult = null;
+        }
+        if (bpmResult) {
+          match.bpm = bpmResult.bpm;
+          match.key = bpmResult.key;
+          match.bpmSource = 'getsongbpm';
+          changed = true;
+          await indexBpm(cacheKey, bpmResult.bpm);
+        }
       }
     }
 

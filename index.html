@@ -207,6 +207,78 @@ const RECORD_MS = 9000;
 
 listenBtn.addEventListener('click', startListen);
 
+async function detectBpmFromBlob(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let audioBuffer;
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  } catch (err) {
+    audioCtx.close();
+    return null;
+  }
+
+  const sampleRate = audioBuffer.sampleRate;
+  const raw = audioBuffer.getChannelData(0);
+
+  const frameSize = Math.max(1, Math.round(sampleRate * 0.01));
+  const frameCount = Math.floor(raw.length / frameSize);
+  if (frameCount < 20) { audioCtx.close(); return null; }
+
+  const envelope = new Float32Array(frameCount);
+  for (let i = 0; i < frameCount; i++) {
+    let sum = 0;
+    const start = i * frameSize;
+    for (let j = 0; j < frameSize; j++) {
+      const v = raw[start + j];
+      sum += v * v;
+    }
+    envelope[i] = Math.sqrt(sum / frameSize);
+  }
+
+  let mean = 0;
+  for (let i = 0; i < frameCount; i++) mean += envelope[i];
+  mean /= frameCount;
+  let variance = 0;
+  for (let i = 0; i < frameCount; i++) variance += (envelope[i] - mean) * (envelope[i] - mean);
+  variance /= frameCount;
+  audioCtx.close();
+  if (variance < 1e-10) return null;
+
+  const norm = new Float32Array(frameCount);
+  const sd = Math.sqrt(variance);
+  for (let i = 0; i < frameCount; i++) norm[i] = (envelope[i] - mean) / sd;
+
+  const frameHopSeconds = frameSize / sampleRate;
+  const minBpm = 60, maxBpm = 200;
+  const minLagSec = 60 / maxBpm;
+  const maxLagSec = 60 / minBpm;
+  const minLagFrames = Math.max(1, Math.round(minLagSec / frameHopSeconds));
+  const maxLagFrames = Math.min(frameCount - 1, Math.round(maxLagSec / frameHopSeconds));
+
+  let bestLag = -1;
+  let bestScore = -Infinity;
+  for (let lag = minLagFrames; lag <= maxLagFrames; lag++) {
+    const n = frameCount - lag;
+    if (n < frameCount * 0.3) break;
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += norm[i] * norm[i + lag];
+    const score = sum / n;
+    if (score > bestScore) {
+      bestScore = score;
+      bestLag = lag;
+    }
+  }
+
+  if (bestLag < 0 || bestScore < 0.1) return null;
+
+  const beatSeconds = bestLag * frameHopSeconds;
+  let bpm = 60 / beatSeconds;
+  while (bpm < 90) bpm *= 2;
+  while (bpm > 180) bpm /= 2;
+  return Math.round(bpm);
+}
+
 async function startListen() {
   resultEl.style.display = 'none';
   listenBtn.disabled = true;
@@ -252,6 +324,8 @@ async function startListen() {
         form.append('lat', String(loc.lat));
         form.append('lng', String(loc.lng));
       }
+      const localBpm = await detectBpmFromBlob(blob);
+      if (localBpm) form.append('localBpm', String(localBpm));
 
       awaitingOwnRecognition = true;
       const res = await fetch('/api/recognize', { method: 'POST', body: form });
