@@ -141,26 +141,32 @@
     <div id="nudgeSubRow" style="margin-top:8px; font-size:0.85rem; color:#999;">
       <span id="nudgeValue" style="display:none;">nudge 0.0s</span>
       <button id="nudgeReset">reset</button>
-      <label style="margin-left:10px;"><input type="checkbox" id="recheckToggle"> auto drift-correct (uses AudD)</label>
     </div>
-    <div id="acousticMeasureRow" style="margin-top:10px;">
-      <select id="bandSelect" style="margin-right:8px;">
-        <option value="full">full range</option>
-        <option value="lows">lows only</option>
-        <option value="mids">mids only</option>
-        <option value="highs">highs only</option>
-      </select>
-      <button id="measureSyncBtn">Measure Sync (mic)</button>
-      <div id="measureSyncStatus" style="font-size:0.85rem; color:#999; margin-top:6px;"></div>
-      <label style="display:block; margin-top:6px; font-size:0.85rem; color:#999;"><input type="checkbox" id="autoTwinToggle"> local twin auto-correct (mic, free, no API)</label>
-    </div>
-    <div id="cueTagRow" style="margin-top:10px; font-size:0.85rem; color:#999;">
-      <div>tag cue points for this song (seconds)</div>
-      <input id="cueInInput" type="number" step="0.5" placeholder="cue in" style="width:70px; margin-right:6px;">
-      <input id="cueOutInput" type="number" step="0.5" placeholder="cue out" style="width:70px; margin-right:6px;">
-      <button id="cueTagBtn">Save Cue Points</button>
-      <div id="cueTagStatus" style="margin-top:4px;"></div>
-    </div>
+    <details id="advancedToolsPanel" style="margin-top:12px; text-align:left; max-width:340px; margin-left:auto; margin-right:auto;">
+      <summary style="cursor:pointer; color:#999; font-size:0.85rem; text-align:center;">tuning &amp; testing tools</summary>
+      <div style="margin-top:10px; font-size:0.85rem; color:#999;">
+        <label><input type="checkbox" id="recheckToggle"> auto drift-correct (uses AudD)</label>
+      </div>
+      <div id="acousticMeasureRow" style="margin-top:10px;">
+        <select id="bandSelect" style="margin-right:8px;">
+          <option value="full">full range</option>
+          <option value="lows">lows only</option>
+          <option value="mids">mids only</option>
+          <option value="highs">highs only</option>
+        </select>
+        <button id="measureSyncBtn">Measure Sync (mic)</button>
+        <div id="measureSyncStatus" style="font-size:0.85rem; color:#999; margin-top:6px;"></div>
+        <label style="display:block; margin-top:6px; font-size:0.85rem; color:#999;"><input type="checkbox" id="autoTwinToggle"> local twin auto-correct (mic, free, no API)</label>
+      </div>
+      <div id="cueTagRow" style="margin-top:10px; font-size:0.85rem; color:#999;">
+        <div>tag cue points for this song (seconds)</div>
+        <input id="cueInInput" type="number" step="0.5" placeholder="cue in" style="width:70px; margin-right:6px;">
+        <input id="cueOutInput" type="number" step="0.5" placeholder="cue out" style="width:70px; margin-right:6px;">
+        <button id="cueTagBtn">Save Cue Points</button>
+        <div id="cueTagStatus" style="margin-top:4px;"></div>
+        <label style="display:block; margin-top:8px;"><input type="checkbox" id="selfLoopToggle"> test mode: let a song beatmatch into itself</label>
+      </div>
+    </details>
     <div id="syncPlayer"></div>
   </div>
 
@@ -1264,7 +1270,8 @@ async function fetchBeatmatchCandidate(title, artist) {
   beatmatchHandedOff = false;
   beatmatchQueuedEl.textContent = '';
   try {
-    const res = await fetch('/api/beatmatch?title=' + encodeURIComponent(title) + '&artist=' + encodeURIComponent(artist), { cache: 'no-store' });
+    const allowSelf = document.getElementById('selfLoopToggle').checked;
+    const res = await fetch('/api/beatmatch?title=' + encodeURIComponent(title) + '&artist=' + encodeURIComponent(artist) + (allowSelf ? '&allowSelf=1' : ''), { cache: 'no-store' });
     const data = await res.json();
     if (data.currentCueOut) beatmatchCueOut = data.currentCueOut;
     if (data.found && data.candidate) {

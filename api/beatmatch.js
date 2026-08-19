@@ -27,6 +27,7 @@ export default async function handler(request) {
   const title = params.get('title');
   const artist = params.get('artist');
   const tolerance = parseFloat(params.get('tolerance') || '2');
+  const allowSelf = params.get('allowSelf') === '1';
 
   if (!title || !artist) {
     return new Response(JSON.stringify({ error: 'missing title or artist' }), { status: 400 });
@@ -71,7 +72,7 @@ export default async function handler(request) {
   }
 
   for (const key of candidateKeys) {
-    if (key === cacheKey) continue;
+    if (key === cacheKey && !allowSelf) continue;
     try {
       const res = await fetch(`${url}/get/${key}`, {
         headers: { Authorization: `Bearer ${token}` }
