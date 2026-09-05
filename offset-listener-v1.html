@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Song Offset Listener</title>
+<style>
+  body {
+    font-family: Georgia, serif;
+    background: #ffffff;
+    color: #111;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+    margin: 0;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  h1 { font-size: 1.2rem; color: #1a4fa0; margin-bottom: 8px; }
+  #listenBtn {
+    font-size: 1.4rem;
+    padding: 20px 40px;
+    border-radius: 12px;
+    border: 2px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
+  #listenBtn:active { background: #1a4fa0; color: #fff; }
+  #status { margin-top: 20px; font-size: 1rem; color: #444; min-height: 1.2em; }
+  #result {
+    margin-top: 20px;
+    border: 2px solid #1a4fa0;
+    border-radius: 10px;
+    padding: 16px 24px;
+    display: none;
+    max-width: 90%;
+  }
+  #result h2 { margin: 0 0 6px 0; font-size: 1.3rem; }
+  #result .artist { color: #555; margin-bottom: 12px; }
+  #result .offset { font-size: 2rem; font-variant-numeric: tabular-nums; color: #1a4fa0; }
+  #result .label { font-size: 0.85rem; color: #777; }
+  #manualSection { margin-top: 30px; width: 100%; max-width: 420px; }
+  #manualToggle { background: none; border: none; color: #1a4fa0; font-size: 0.95rem; text-decoration: underline; cursor: pointer; }
+  #manualLabel { font-size: 0.85rem; color: #999; margin-bottom: 8px; }
+  #searchBox { display: block; margin-top: 6px; }
+  #searchInput { width: 70%; padding: 10px; font-size: 1rem; border: 2px solid #1a4fa0; border-radius: 8px; font-family: Georgia, serif; }
+  #searchBtn { padding: 10px 16px; font-size: 1rem; border: 2px solid #1a4fa0; background: #eaf1fb; color: #1a4fa0; border-radius: 8px; }
+  #searchResults { margin-top: 16px; text-align: left; }
+  .searchItem { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid #ddd; cursor: pointer; }
+  .searchItem img { width: 60px; height: 45px; border-radius: 4px; }
+  .searchItem .meta { font-size: 0.9rem; }
+  .searchItem .meta .t { color: #111; }
+  .searchItem .meta .c { color: #777; font-size: 0.8rem; }
+  #broadcastPanel { display: none; margin-top: 20px; border: 2px solid #1a4fa0; border-radius: 10px; padding: 16px; }
+  #hostPlayer { width: 100%; max-width: 320px; aspect-ratio: 16/9; margin: 12px auto; }
+  #broadcastBtn { padding: 14px 28px; font-size: 1.1rem; border-radius: 10px; border: 2px solid #1a4fa0; background: #eaf1fb; color: #1a4fa0; cursor: pointer; }
+  #broadcastStatus { margin-top: 10px; font-size: 0.9rem; color: #777; }
+  #feed { margin-top: 30px; width: 100%; max-width: 420px; text-align: left; }
+  #feed h3 { font-size: 0.9rem; color: #777; margin-bottom: 8px; }
+  .feedItem { border-bottom: 1px solid #ddd; padding: 8px 0; }
+  .feedItem .ft { color: #1a4fa0; font-size: 1rem; }
+  .feedItem .fa { color: #555; font-size: 0.85rem; }
+  .feedItem .fs { color: #999; font-size: 0.75rem; }
+  #videoInfo a { color: #1a4fa0; }
+  #syncWatchBtn {
+    margin-top: 12px;
+    padding: 10px 20px;
+    font-size: 1rem;
+    border-radius: 10px;
+    border: 2px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
+  #syncCountdown { margin-top: 8px; font-size: 1.1rem; color: #1a4fa0; min-height: 1.4rem; }
+  #syncPlayer { width: 1px; height: 1px; overflow: hidden; margin: 8px auto; }
+  #feedPlayer { width: 1px; height: 1px; overflow: hidden; margin: 8px auto; }
+  .feedItem { cursor: pointer; }
+  #inlineControls button {
+    padding: 5px 10px;
+    font-size: 0.85rem;
+    border-radius: 8px;
+    border: 2px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
+  #syncPauseBtn { min-width: 70px; }
+  #nudgeBack, #nudgeForward { min-width: 62px; }
+  #nudgeSubRow button {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    border: 1px solid #1a4fa0;
+    background: #eaf1fb;
+    color: #1a4fa0;
+    cursor: pointer;
+  }
+  #nudgeValue { font-size: 0.85rem; }
+</style>
+</head>
+<body>
+  <h1>Song Offset Listener</h1>
+  <button id="listenBtn">Listen</button>
+  <div id="status"></div>
+
+  <div id="manualSection">
+    <div id="manualLabel">optional manual search</div>
+    <div id="searchBox">
+      <input id="searchInput" type="text" placeholder="song or artist">
+      <button id="searchBtn">Search</button>
+      <div id="searchResults"></div>
+    </div>
+    <div id="broadcastPanel">
+      <div id="chosenTitle" style="color:#1a4fa0;font-size:1.1rem;"></div>
+      <div id="hostPlayer"></div>
+      <button id="broadcastBtn">Play and Broadcast</button>
+      <div id="broadcastStatus"></div>
+    </div>
+  </div>
+
+  <div id="result">
+    <h2 id="songTitle" style="margin:0;"></h2>
+    <div id="inlineControls" style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top:8px;">
+      <button id="syncPauseBtn">Pause</button>
+      <button id="nudgeBack">- 0.5s</button>
+      <button id="nudgeForward">+ 0.5s</button>
+    </div>
+    <div class="artist" id="songArtist"></div>
+    <div class="offset" id="songOffset"></div>
+    <div class="label">matched offset into track</div>
+    <div class="label" id="videoInfo" style="margin-top:8px;"></div>
+    <button id="syncWatchBtn" style="display:none;">Watch In Sync</button>
+    <div id="syncCountdown"></div>
+    <div id="nudgeSubRow" style="margin-top:8px; font-size:0.85rem; color:#999;">
+      <span id="nudgeValue" style="display:none;">nudge 0.0s</span>
+      <button id="nudgeReset">reset</button>
+    </div>
+    <details id="advancedToolsPanel" style="margin-top:12px; text-align:left; max-width:340px; margin-left:auto; margin-right:auto;">
+      <summary style="cursor:pointer; color:#999; font-size:0.85rem; text-align:center;">tuning &amp; testing tools</summary>
+      <div style="margin-top:10px; font-size:0.85rem; color:#999;">
+        <label><input type="checkbox" id="recheckToggle"> auto drift-correct (uses AudD)</label>
+      </div>
+      <div id="acousticMeasureRow" style="margin-top:10px;">
+        <select id="bandSelect" style="margin-right:8px;">
+          <option value="full">full range</option>
+          <option value="lows">lows only</option>
+          <option value="mids">mids only</option>
+          <option value="highs">highs only</option>
+        </select>
+        <button id="measureSyncBtn">Measure Sync (mic)</button>
+        <div id="measureSyncStatus" style="font-size:0.85rem; color:#999; margin-top:6px;"></div>
+        <label style="display:block; margin-top:6px; font-size:0.85rem; color:#999;"><input type="checkbox" id="autoTwinToggle"> local twin auto-correct (mic, free, no API)</label>
+      </div>
+      <div id="cueTagRow" style="margin-top:10px; font-size:0.85rem; color:#999;">
+        <div>tag cue points for this song (seconds)</div>
+        <input id="cueInInput" type="number" step="0.5" placeholder="cue in" style="width:70px; margin-right:6px;">
+        <input id="cueOutInput" type="number" step="0.5" placeholder="cue out" style="width:70px; margin-right:6px;">
+        <button id="cueTagBtn">Save Cue Points</button>
+        <div id="cueTagStatus" style="margin-top:4px;"></div>
+        <label style="display:block; margin-top:8px;"><input type="checkbox" id="selfLoopToggle"> test mode: let a song beatmatch into itself</label>
+      </div>
+    </details>
+    <div id="syncPlayer"></div>
+  </div>
+
+  <div id="feed">
+    <h3>heard across all phones</h3>
+    <div id="feedList"></div>
+    <div id="feedPlayerStatus" style="margin-top:8px; font-size:0.85rem; color:#999;"></div>
+    <button id="feedPauseBtn" style="display:none; margin-top:6px;">Pause</button>
+    <div id="feedPlayer"></div>
+  </div>
+
+  <div id="audioUnlock" style="display:none; margin:12px auto; padding:12px; border:2px solid #1a4fa0; border-radius:10px; background:#eaf1fb; max-width:320px;">
+    <div style="font-size:0.9rem; color:#1a4fa0; margin-bottom:8px;">tap once to allow audio on this phone</div>
+    <button id="audioUnlockBtn">Enable Audio</button>
+  </div>
+
+  <details id="nearbyPanel" style="margin-top:24px; text-align:left; width:100%; max-width:420px;" open>
+    <summary style="cursor:pointer; color:#999; font-size:0.9rem;">nearby broadcasts</summary>
+    <div id="nearbyList"></div>
+  </details>
+
+  <details id="positionsPanel" style="margin-top:24px; text-align:left; width:100%; max-width:420px;">
+    <summary style="cursor:pointer; color:#999; font-size:0.9rem;">live positions</summary>
+    <div id="positionsList"></div>
+    <div id="beatmatchQueued" style="margin-top:10px; font-size:0.85rem; color:#999;"></div>
+    <div id="broadcastNudgeRow" style="margin-top:14px; display:none;">
+      <div style="font-size:0.85rem; color:#999;">broadcast timing (shifts every phone at once)</div>
+      <button id="broadcastNudgeBack" style="margin-top:6px;">- 0.5s</button>
+      <button id="broadcastNudgeForward" style="margin-left:8px;">+ 0.5s</button>
+      <span id="broadcastNudgeStatus" style="margin-left:8px; font-size:0.85rem; color:#999;"></span>
+    </div>
+  </details>
+
+<script>
+const listenBtn = document.getElementById('listenBtn');
+const statusEl = document.getElementById('status');
+const resultEl = document.getElementById('result');
+const songTitle = document.getElementById('songTitle');
+const songArtist = document.getElementById('songArtist');
+const songOffset = document.getElementById('songOffset');
+const videoInfo = document.getElementById('videoInfo');
+
+const RECORD_MS = 9000;
+
+listenBtn.addEventListener('click', startListen);
+
+async function detectBpmFromBlob(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let audioBuffer;
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  } catch (err) {
+    audioCtx.close();
+    return null;
+  }
+
+  const sampleRate = audioBuffer.sampleRate;
+  const raw = audioBuffer.getChannelData(0);
+
+  const frameSize = Math.max(1, Math.round(sampleRate * 0.01));
+  const frameCount = Math.floor(raw.length / frameSize);
+  if (frameCount < 20) { audioCtx.close(); return null; }
+
+  const envelope = new Float32Array(frameCount);
+  for (let i = 0; i < frameCount; i++) {
+    let sum = 0;
+    const start = i * frameSize;
+    for (let j = 0; j < frameSize; j++) {
+      const v = raw[start + j];
+      sum += v * v;
+    }
+    envelope[i] = Math.sqrt(sum / frameSize);
+  }
+
+  let mean = 0;
+  for (let i = 0; i < frameCount; i++) mean += envelope[i];
+  mean /= frameCount;
+  let variance = 0;
+  for (let i = 0; i < frameCount; i++) variance += (envelope[i] - mean) * (envelope[i] - mean);
+  variance /= frameCount;
+  audioCtx.close();
+  if (variance < 1e-10) return null;
+
+  const norm = new Float32Array(frameCount);
+  const sd = Math.sqrt(variance);
+  for (let i = 0; i < frameCount; i++) norm[i] = (envelope[i] - mean) / sd;
+
+  const frameHopSeconds = frameSize / sampleRate;
+  const minBpm = 60, maxBpm = 200;
+  const minLagSec = 60 / maxBpm;
+  const maxLagSec = 60 / minBpm;
+  const minLagFrames = Math.max(1, Math.round(minLagSec / frameHopSeconds));
+  const maxLagFrames = Math.min(frameCount - 1, Math.round(maxLagSec / frameHopSeconds));
+
+  let bestLag = -1;
+  let bestScore = -Infinity;
+  for (let lag = minLagFrames; lag <= maxLagFrames; lag++) {
+    const n = frameCount - lag;
+    if (n < frameCount * 0.3) break;
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += norm[i] * norm[i + lag];
+    const score = sum / n;
+    if (score > bestScore) {
+      bestScore = score;
+      bestLag = lag;
+    }
+  }
+
+  if (bestLag < 0 || bestScore < 0.1) return null;
+
+  const beatSeconds = bestLag * frameHopSeconds;
+  let bpm = 60 / beatSeconds;
+  while (bpm < 90) bpm *= 2;
+  while (bpm > 180) bpm /= 2;
+  return Math.round(bpm);
+}
+
+async function startListen() {
+  resultEl.style.display = 'none';
+  listenBtn.disabled = true;
+  statusEl.textContent = 'Requesting microphone...';
+
+  const activePlayer = (syncLive && syncPlayer) ? syncPlayer : (broadcasting && hostPlayer) ? hostPlayer : null;
+  let wasMutedByListen = false;
+  if (activePlayer && !activePlayer.isMuted()) {
+    activePlayer.mute();
+    wasMutedByListen = true;
+  }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    if (wasMutedByListen && activePlayer) activePlayer.unMute();
+    statusEl.textContent = 'Microphone permission denied or unavailable.';
+    listenBtn.disabled = false;
+    return;
+  }
+
+  const chunks = [];
+  const captureStartedAt = now();
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+  recorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    if (wasMutedByListen && activePlayer) activePlayer.unMute();
+    statusEl.textContent = 'Identifying...';
+    const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+
+    try {
+      const form = new FormData();
+      form.append('audio', blob, 'clip.webm');
+      form.append('capturedAt', String(captureStartedAt));
+      form.append('clipDurationMs', String(RECORD_MS));
+      const loc = await getMyLocation();
+      if (loc) {
+        form.append('lat', String(loc.lat));
+        form.append('lng', String(loc.lng));
+      }
+      const localBpm = await detectBpmFromBlob(blob);
+      if (localBpm) form.append('localBpm', String(localBpm));
+
+      awaitingOwnRecognition = true;
+      const res = await fetch('/api/recognize', { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (data.error) {
+        awaitingOwnRecognition = false;
+        statusEl.textContent = 'No match: ' + data.error;
+        listenBtn.disabled = false;
+        return;
+      }
+
+      activateMatch(data, true);
+      awaitingOwnRecognition = false;
+      statusEl.textContent = '';
+    } catch (err) {
+      awaitingOwnRecognition = false;
+      statusEl.textContent = 'Request failed. Check connection.';
+    }
+    listenBtn.disabled = false;
+  };
+
+  recorder.start();
+  statusEl.textContent = 'Listening...';
+  setTimeout(() => recorder.stop(), RECORD_MS);
+}
+
+function formatOffset(seconds) {
+  if (seconds === null || seconds === undefined) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = (seconds % 60).toFixed(1);
+  return m + ':' + s.padStart(4, '0');
+}
+
+let clockOffsetMs = 0;
+let hasCalibratedOnce = false;
+async function calibrateClock() {
+  const samples = [];
+  for (let i = 0; i < 5; i++) {
+    const t0 = Date.now();
+    try {
+      const res = await fetch('/api/time', { cache: 'no-store' });
+      const data = await res.json();
+      const t1 = Date.now();
+      const rtt = t1 - t0;
+      samples.push({ offset: (data.serverTime + rtt / 2) - t1, rtt });
+    } catch (err) {}
+  }
+  if (samples.length === 0) return;
+  samples.sort((a, b) => a.rtt - b.rtt);
+  const freshOffset = samples[0].offset;
+  if (!hasCalibratedOnce) {
+    clockOffsetMs = freshOffset;
+    hasCalibratedOnce = true;
+  } else {
+    const drift = freshOffset - clockOffsetMs;
+    clockOffsetMs += drift * 0.5;
+  }
+}
+function now() { return Date.now() + clockOffsetMs; }
+calibrateClock();
+setInterval(calibrateClock, 75000);
+
+let lastMatch = null;
+let syncPlayer = null;
+let syncPlayerReady = false;
+let myMatchKey = null;
+let iAmHost = false;
+let lastSeenAnchorKey = null;
+const syncWatchBtn = document.getElementById('syncWatchBtn');
+const syncCountdown = document.getElementById('syncCountdown');
+const broadcastNudgeRowEl = document.getElementById('broadcastNudgeRow');
+
+function matchKey(m) {
+  return (m && m.videoId ? m.videoId : '') + '|' + Math.round(m && m.epochMs ? m.epochMs : 0);
+}
+
+let audioUnlocked = false;
+let awaitingOwnRecognition = false;
+const audioUnlockEl = document.getElementById('audioUnlock');
+const audioUnlockBtn = document.getElementById('audioUnlockBtn');
+
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  audioUnlockEl.style.display = 'none';
+  if (!syncPlayer) {
+    if (window.YT && window.YT.Player) {
+      createSyncPlayer();
+    } else {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.body.appendChild(tag);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function () {
+        if (prev) prev();
+        createSyncPlayer();
+      };
+    }
+  } else if (lastMatch) {
+    scheduleSyncPlay();
+  }
+}
+
+audioUnlockBtn.addEventListener('click', unlockAudio);
+document.body.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+document.body.addEventListener('click', unlockAudio, { once: true });
+
+
+function applyDriftCorrection(freshOffsetSeconds, freshEpochMs) {
+  if (!lastMatch || syncMatchEpoch === null) return;
+  const freshSyncMatchEpoch = freshEpochMs - freshOffsetSeconds * 1000 + lastMatch.offsetSeconds * 1000;
+  const drift = freshSyncMatchEpoch - syncMatchEpoch;
+  if (Math.abs(drift) <= RECHECK_DRIFT_SANITY_MS) {
+    syncMatchEpoch += drift * RECHECK_BLEND_FACTOR;
+  }
+}
+
+function anchorIsStale(data) {
+  if (typeof data.epochMs !== 'number') return false;
+  const elapsed = (now() - data.epochMs) / 1000;
+  const projected = (data.offsetSeconds || 0) + elapsed;
+  const duration = data.videoDurationSeconds;
+  if (typeof duration === 'number' && duration > 0) {
+    return projected >= duration;
+  }
+  return elapsed > 360;
+}
+
+function activateMatch(data, isMine, skipTriggerSync) {
+  if (!isMine && anchorIsStale(data)) {
+    lastSeenAnchorKey = matchKey(data);
+    return;
+  }
+
+  const isSameSongAlreadyActive = lastMatch && data.videoId && lastMatch.videoId === data.videoId && syncLive;
+
+  songTitle.textContent = data.title;
+  songArtist.textContent = data.artist;
+  resultEl.style.display = 'block';
+
+  if (!data.videoId) {
+    songOffset.textContent = formatOffset(data.offsetSeconds);
+    videoInfo.textContent = 'no youtube match found';
+    syncWatchBtn.style.display = 'none';
+    return;
+  }
+
+  const directUrl = 'https://www.youtube.com/watch?v=' + data.videoId + '&t=' + Math.floor(data.offsetSeconds) + 's';
+  videoInfo.innerHTML = '<a href="' + directUrl + '" target="_blank" rel="noopener">open on youtube</a>' +
+    (data.videoDurationSeconds ? ' (' + formatOffset(data.videoDurationSeconds) + ' long)' : '');
+  syncWatchBtn.style.display = 'inline-block';
+
+  const key = matchKey(data);
+  lastSeenAnchorKey = key;
+
+  if (isSameSongAlreadyActive) {
+    songOffset.textContent = formatOffset(lastMatch.offsetSeconds);
+    applyDriftCorrection(data.offsetSeconds, data.epochMs);
+    if (isMine) { myMatchKey = key; iAmHost = true; broadcastNudgeRowEl.style.display = 'block'; }
+    return;
+  }
+
+  songOffset.textContent = formatOffset(data.offsetSeconds);
+  lastMatch = data;
+  if (isMine) {
+    myMatchKey = key;
+    iAmHost = true;
+  } else {
+    iAmHost = (myMatchKey !== null && key === myMatchKey);
+  }
+  broadcastNudgeRowEl.style.display = iAmHost ? 'block' : 'none';
+
+  if (!isMine) {
+    logPlayEvent({
+      event: 'remote_anchor_detected',
+      title: data.title,
+      videoId: data.videoId,
+      nudgeMs: 0
+    });
+  }
+
+  fetchBeatmatchCandidate(data.title, data.artist);
+
+  if (!skipTriggerSync) triggerSync();
+}
+
+async function pollRemoteAnchor() {
+  if (awaitingOwnRecognition) return;
+  const loc = await getMyLocation();
+  if (!loc) return;
+  try {
+    const res = await fetch('/api/anchor?lat=' + loc.lat + '&lng=' + loc.lng, { cache: 'no-store' });
+    const anchor = await res.json();
+    if (!anchor || anchor.error || !anchor.videoId || typeof anchor.epochMs !== 'number') return;
+    if ((Date.now() - anchor.epochMs) > 3600000) return;
+    const key = matchKey(anchor);
+    if (key === lastSeenAnchorKey) return;
+    lastSeenAnchorKey = key;
+
+    const isSameSong = lastMatch && lastMatch.videoId === anchor.videoId;
+    if (isSameSong) {
+      applyDriftCorrection(anchor.offsetSeconds, anchor.epochMs);
+      return;
+    }
+
+    if (!audioUnlocked && !anchorIsStale(anchor)) {
+      audioUnlockEl.style.display = 'block';
+    }
+
+    activateMatch(anchor, false);
+  } catch (err) {
+    logPlayEvent({
+      event: 'poll_error',
+      title: null,
+      videoId: null,
+      nudgeMs: 0,
+      errorMessage: String(err && err.message || err)
+    });
+  }
+}
+setInterval(pollRemoteAnchor, 1500);
+
+syncWatchBtn.addEventListener('click', triggerSync);
+
+function triggerSync() {
+  if (!lastMatch || !lastMatch.videoId) return;
+  if (!syncPlayer) {
+    if (window.YT && window.YT.Player) {
+      createSyncPlayer();
+    } else {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.body.appendChild(tag);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function () {
+        if (prev) prev();
+        createSyncPlayer();
+      };
+    }
+  } else {
+    scheduleSyncPlay();
+  }
+}
+
+function createSyncPlayer() {
+  syncPlayer = new YT.Player('syncPlayer', {
+    height: '1',
+    width: '1',
+    playerVars: { controls: 0 },
+    events: {
+      onReady: () => { syncPlayerReady = true; scheduleSyncPlay(); },
+      onStateChange: (event) => {
+        if (event.data === YT.PlayerState.PLAYING && !syncLive) {
+          syncPlayer.pauseVideo();
+          logPlayEvent({
+            event: 'premature_play_blocked',
+            title: lastMatch ? lastMatch.title : null,
+            videoId: lastMatch ? lastMatch.videoId : null,
+            nudgeMs
+          });
+        }
+      }
+    }
+  });
+}
+
+let syncLive = false;
+let syncFireEpoch = null;
+let syncMatchEpoch = null;
+
+function currentIntendedPosition() {
+  if (!lastMatch || syncMatchEpoch === null) return 0;
+  const elapsed = (now() - syncMatchEpoch) / 1000;
+  return lastMatch.offsetSeconds + elapsed + (nudgeMs / 1000);
+}
+
+const RECHECK_INTERVAL_MS = 300000;
+let recheckEnabled = false;
+const RECHECK_DRIFT_SANITY_MS = 8000;
+const RECHECK_BLEND_FACTOR = 0.5;
+let recheckInProgress = false;
+
+async function backgroundRecheck() {
+  if (!recheckEnabled || !lastMatch || recheckInProgress) return;
+  recheckInProgress = true;
+  try {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      return;
+    }
+    const chunks = [];
+    const capturedAt = now();
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+    recorder.start();
+    setTimeout(() => recorder.stop(), RECORD_MS);
+    await stopped;
+    stream.getTracks().forEach(t => t.stop());
+
+    const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+    const form = new FormData();
+    form.append('audio', blob, 'clip.webm');
+    form.append('capturedAt', String(capturedAt));
+    form.append('clipDurationMs', String(RECORD_MS));
+    form.append('silent', 'true');
+
+    const res = await fetch('/api/recognize', { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.error || typeof data.offsetSeconds !== 'number' || typeof data.epochMs !== 'number') return;
+    if (!lastMatch || !data.title || !lastMatch.title) return;
+    if (!titleRoughlyMatches(data.title, lastMatch.title)) return;
+
+    const freshSyncMatchEpoch = data.epochMs - (data.offsetSeconds - lastMatch.offsetSeconds) * 1000;
+    const drift = freshSyncMatchEpoch - syncMatchEpoch;
+    if (Math.abs(drift) > RECHECK_DRIFT_SANITY_MS) return;
+
+    applyDriftCorrection(data.offsetSeconds, data.epochMs);
+    logPlayEvent({
+      event: 'background_recheck_correction',
+      title: lastMatch.title,
+      videoId: lastMatch.videoId,
+      position: currentIntendedPosition(),
+      nudgeMs,
+      driftMs: Math.round(drift)
+    });
+  } catch (err) {
+    // silent, this is a background best-effort correction
+  } finally {
+    recheckInProgress = false;
+  }
+}
+
+function titleRoughlyMatches(a, b) {
+  const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (!na || !nb) return false;
+  return na.includes(nb) || nb.includes(na);
+}
+
+setInterval(backgroundRecheck, RECHECK_INTERVAL_MS);
+document.getElementById('recheckToggle').addEventListener('change', (e) => {
+  recheckEnabled = e.target.checked;
+});
+
+function scheduleSyncPlay() {
+  logPlayEvent({
+    event: 'schedule_sync_play_called',
+    title: lastMatch ? lastMatch.title : null,
+    videoId: lastMatch ? lastMatch.videoId : null,
+    position: currentIntendedPosition(),
+    nudgeMs
+  });
+  if (!syncPlayerReady || !lastMatch) return;
+  syncLive = false;
+  const joiningLate = (typeof lastMatch.epochMs === 'number') && (now() - lastMatch.epochMs > 10000);
+  const leadMs = joiningLate ? 1200 : 4000;
+  syncMatchEpoch = (typeof lastMatch.epochMs === 'number') ? lastMatch.epochMs : now();
+  syncFireEpoch = now() + leadMs;
+  const initialPosition = currentIntendedPosition();
+  syncPlayer.mute();
+  syncPlayer.cueVideoById(lastMatch.videoId, Math.max(initialPosition, 0));
+
+  const tick = () => {
+    const remaining = syncFireEpoch - now();
+    if (remaining <= 0) {
+      const firePosition = currentIntendedPosition();
+      syncPlayer.seekTo(Math.max(firePosition, 0), true);
+      syncPlayer.playVideo();
+      setTimeout(() => syncPlayer.unMute(), 300);
+      syncCountdown.textContent = 'live';
+      syncLive = true;
+      logPlayEvent({
+        event: 'watch_in_sync_fire',
+        title: lastMatch.title,
+        videoId: lastMatch.videoId,
+        position: Math.max(firePosition, 0),
+        nudgeMs
+      });
+      return;
+    }
+    syncCountdown.textContent = 'starting in ' + (remaining / 1000).toFixed(1) + 's';
+    setTimeout(tick, 50);
+  };
+  tick();
+}
+
+function getDeviceId() {
+  let id = localStorage.getItem('songsync:deviceId');
+  if (!id) {
+    id = 'phone-' + Math.random().toString(36).slice(2, 8);
+    localStorage.setItem('songsync:deviceId', id);
+  }
+  return id;
+}
+const deviceId = getDeviceId();
+
+async function logPlayEvent(details) {
+  try {
+    await fetch('/api/play-log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(Object.assign({ deviceId, playedAtEpochMs: Date.now() }, details))
+    });
+  } catch (err) {}
+}
+
+let nudgeMs = 0;
+const nudgeValueEl = document.getElementById('nudgeValue');
+const nudgeBackBtn = document.getElementById('nudgeBack');
+const nudgeForwardBtn = document.getElementById('nudgeForward');
+const nudgeResetBtn = document.getElementById('nudgeReset');
+const syncPauseBtn = document.getElementById('syncPauseBtn');
+let syncPaused = false;
+
+function renderNudge() {
+  nudgeValueEl.textContent = 'nudge ' + (nudgeMs >= 0 ? '+' : '') + (nudgeMs / 1000).toFixed(1) + 's';
+}
+
+function setNudge(newValueMs) {
+  nudgeMs = newValueMs;
+  renderNudge();
+  logPlayEvent({
+    event: 'nudge_tap_debug',
+    title: lastMatch ? lastMatch.title : null,
+    videoId: lastMatch ? lastMatch.videoId : null,
+    position: currentIntendedPosition(),
+    nudgeMs: newValueMs,
+    driftMs: (syncLive ? 1 : 0) + (syncPlayer ? 2 : 0)
+  });
+  if (syncLive && syncPlayer) {
+    const target = currentIntendedPosition();
+    syncPlayer.seekTo(Math.max(target, 0), true);
+  }
+}
+
+nudgeBackBtn.addEventListener('click', () => setNudge(nudgeMs - 500));
+nudgeForwardBtn.addEventListener('click', () => setNudge(nudgeMs + 500));
+nudgeResetBtn.addEventListener('click', () => setNudge(0));
+renderNudge();
+
+let pauseStartedAt = null;
+
+syncPauseBtn.addEventListener('click', () => {
+  if (!syncLive || !syncPlayer) return;
+  if (syncPaused) {
+    if (pauseStartedAt !== null) {
+      const pausedDurationMs = now() - pauseStartedAt;
+      syncMatchEpoch += pausedDurationMs;
+      pauseStartedAt = null;
+      if (iAmHost) {
+        applyBroadcastNudge(-pausedDurationMs);
+      }
+    }
+    syncPlayer.playVideo();
+    syncPauseBtn.textContent = 'Pause';
+  } else {
+    syncPlayer.pauseVideo();
+    pauseStartedAt = now();
+    syncPauseBtn.textContent = 'Resume';
+  }
+  syncPaused = !syncPaused;
+});
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function applyBandFilter(audioBuffer, band) {
+  if (band === 'full') return audioBuffer;
+
+  const offlineCtx = new OfflineAudioContext(
+    audioBuffer.numberOfChannels,
+    audioBuffer.length,
+    audioBuffer.sampleRate
+  );
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  const filter = offlineCtx.createBiquadFilter();
+
+  if (band === 'lows') {
+    filter.type = 'lowpass';
+    filter.frequency.value = 250;
+  } else if (band === 'highs') {
+    filter.type = 'highpass';
+    filter.frequency.value = 4000;
+  } else {
+    filter.type = 'bandpass';
+    filter.frequency.value = 1000;
+    filter.Q.value = 0.4;
+  }
+
+  source.connect(filter);
+  filter.connect(offlineCtx.destination);
+  source.start(0);
+  return await offlineCtx.startRendering();
+}
+
+async function recordAndMeasureLag(durationMs, minLagSec, maxLagSec, band) {
+  band = band || 'full';
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    return null;
+  }
+  const chunks = [];
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+  recorder.start();
+  await sleep(durationMs);
+  recorder.stop();
+  await stopped;
+  stream.getTracks().forEach(t => t.stop());
+
+  const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let audioBuffer;
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  } catch (err) {
+    audioCtx.close();
+    return null;
+  }
+
+  let filteredBuffer;
+  try {
+    filteredBuffer = await applyBandFilter(audioBuffer, band);
+  } catch (err) {
+    filteredBuffer = audioBuffer;
+  }
+
+  const sampleRate = filteredBuffer.sampleRate;
+  const raw = filteredBuffer.getChannelData(0);
+
+  const frameSize = Math.max(1, Math.round(sampleRate * 0.01));
+  const frameCount = Math.floor(raw.length / frameSize);
+  if (frameCount < 20) { audioCtx.close(); return null; }
+
+  const envelope = new Float32Array(frameCount);
+  for (let i = 0; i < frameCount; i++) {
+    let sum = 0;
+    const start = i * frameSize;
+    for (let j = 0; j < frameSize; j++) {
+      const v = raw[start + j];
+      sum += v * v;
+    }
+    envelope[i] = Math.sqrt(sum / frameSize);
+  }
+
+  let mean = 0;
+  for (let i = 0; i < frameCount; i++) mean += envelope[i];
+  mean /= frameCount;
+  let variance = 0;
+  for (let i = 0; i < frameCount; i++) variance += (envelope[i] - mean) * (envelope[i] - mean);
+  variance /= frameCount;
+  audioCtx.close();
+  if (variance < 1e-10) return null;
+
+  const norm = new Float32Array(frameCount);
+  const sd = Math.sqrt(variance);
+  for (let i = 0; i < frameCount; i++) norm[i] = (envelope[i] - mean) / sd;
+
+  const frameHopSeconds = frameSize / sampleRate;
+  const minLagFrames = Math.max(1, Math.round(minLagSec / frameHopSeconds));
+  const maxLagFrames = Math.min(frameCount - 1, Math.round(maxLagSec / frameHopSeconds));
+
+  let bestLag = -1;
+  let bestScore = -Infinity;
+  for (let lag = minLagFrames; lag <= maxLagFrames; lag++) {
+    const n = frameCount - lag;
+    if (n < frameCount * 0.3) break;
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += norm[i] * norm[i + lag];
+    const score = sum / n;
+    if (score > bestScore) {
+      bestScore = score;
+      bestLag = lag;
+    }
+  }
+
+  if (bestLag < 0 || bestScore < 0.12) return null;
+  return bestLag * frameHopSeconds;
+}
+
+const measureSyncBtn = document.getElementById('measureSyncBtn');
+const measureSyncStatus = document.getElementById('measureSyncStatus');
+
+async function runAcousticMeasurement(band, isAutomatic) {
+  if (!syncLive || !syncPlayer) {
+    if (!isAutomatic) measureSyncStatus.textContent = 'not currently synced to a song';
+    return;
+  }
+  if (!isAutomatic) {
+    measureSyncBtn.disabled = true;
+    measureSyncStatus.textContent = 'listening for the echo (' + band + ', 6s)...';
+  }
+
+  const magnitude = await recordAndMeasureLag(6000, 0.15, 5.0, band);
+  if (magnitude === null) {
+    if (!isAutomatic) {
+      measureSyncStatus.textContent = 'no clear echo detected in this band, try full range or somewhere quieter';
+      measureSyncBtn.disabled = false;
+    }
+    return;
+  }
+
+  if (magnitude < 0.2) {
+    if (!isAutomatic) {
+      measureSyncStatus.textContent = 'already within 0.2s, no correction needed';
+      measureSyncBtn.disabled = false;
+    }
+    return;
+  }
+
+  if (!isAutomatic) measureSyncStatus.textContent = 'gap measured at ' + magnitude.toFixed(2) + 's, testing direction...';
+
+  const trialDeltaMs = magnitude * 1000;
+  setNudge(nudgeMs + trialDeltaMs);
+  await sleep(1200);
+
+  const confirmLag = await recordAndMeasureLag(3000, 0.05, Math.min(5.0, magnitude * 2.5), band);
+  let finalDeltaMs = trialDeltaMs;
+
+  if (confirmLag !== null && confirmLag > magnitude * 1.3) {
+    setNudge(nudgeMs - trialDeltaMs * 2);
+    finalDeltaMs = -trialDeltaMs;
+  }
+
+  if (!isAutomatic) measureSyncStatus.textContent = 'applied ' + (finalDeltaMs >= 0 ? '+' : '') + (finalDeltaMs / 1000).toFixed(2) + 's, broadcasting correction to all phones...';
+
+  if (iAmHost) {
+    await applyBroadcastNudge(finalDeltaMs);
+  }
+
+  logPlayEvent({
+    event: isAutomatic ? 'acoustic_twin_correction' : 'acoustic_measure_correction',
+    title: lastMatch ? lastMatch.title : null,
+    videoId: lastMatch ? lastMatch.videoId : null,
+    position: currentIntendedPosition(),
+    nudgeMs,
+    driftMs: Math.round(finalDeltaMs)
+  });
+
+  if (!isAutomatic) {
+    measureSyncStatus.textContent = 'done, corrected ' + (finalDeltaMs >= 0 ? '+' : '') + (finalDeltaMs / 1000).toFixed(2) + 's and broadcast it';
+    measureSyncBtn.disabled = false;
+  }
+}
+
+measureSyncBtn.addEventListener('click', async () => {
+  const band = document.getElementById('bandSelect').value;
+  await runAcousticMeasurement(band, false);
+});
+
+let autoTwinEnabled = false;
+let autoTwinRunning = false;
+document.getElementById('autoTwinToggle').addEventListener('change', (e) => {
+  autoTwinEnabled = e.target.checked;
+});
+setInterval(async () => {
+  if (!autoTwinEnabled || autoTwinRunning) return;
+  autoTwinRunning = true;
+  try {
+    const band = document.getElementById('bandSelect').value;
+    await runAcousticMeasurement(band, true);
+  } finally {
+    autoTwinRunning = false;
+  }
+}, 45000);
+
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const searchResults = document.getElementById('searchResults');
+const broadcastPanel = document.getElementById('broadcastPanel');
+const chosenTitle = document.getElementById('chosenTitle');
+const broadcastBtn = document.getElementById('broadcastBtn');
+const broadcastStatus = document.getElementById('broadcastStatus');
+
+let hostPlayer = null;
+let hostPlayerReady = false;
+let chosenVideo = null;
+let broadcasting = false;
+let broadcastTimer = null;
+let broadcastLifetimeTimer = null;
+
+searchBtn.addEventListener('click', runSearch);
+
+async function runSearch() {
+  const q = searchInput.value.trim();
+  if (!q) return;
+  searchResults.innerHTML = 'searching...';
+  try {
+    const res = await fetch('/api/youtube-search?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    if (data.error) {
+      searchResults.innerHTML = 'error: ' + escapeHtml(data.error);
+      return;
+    }
+    renderResults(data.results || []);
+  } catch (err) {
+    searchResults.innerHTML = 'request failed: ' + escapeHtml(String(err));
+  }
+}
+
+function renderResults(results) {
+  if (results.length === 0) {
+    searchResults.innerHTML = 'no results';
+    return;
+  }
+  searchResults.innerHTML = '';
+  results.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'searchItem';
+    row.innerHTML = '<img src="' + (r.thumbnail || '') + '">' +
+      '<div class="meta"><div class="t">' + escapeHtml(r.title) + '</div>' +
+      '<div class="c">' + escapeHtml(r.channel) + '</div></div>';
+    row.addEventListener('click', () => selectVideo(r));
+    searchResults.appendChild(row);
+  });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+function selectVideo(video) {
+  chosenVideo = video;
+  chosenTitle.textContent = video.title;
+  broadcastPanel.style.display = 'block';
+
+  if (broadcastTimer) {
+    clearInterval(broadcastTimer);
+    broadcastTimer = null;
+  }
+
+  if (!hostPlayer) {
+    loadYouTubeApiHost();
+  } else {
+    hostPlayer.cueVideoById(video.videoId);
+    if (hostPlayerReady) startBroadcast();
+  }
+}
+
+function loadYouTubeApiHost() {
+  if (window.YT && window.YT.Player) {
+    createHostPlayer();
+    return;
+  }
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.body.appendChild(tag);
+  const prev = window.onYouTubeIframeAPIReady;
+  window.onYouTubeIframeAPIReady = function () {
+    if (prev) prev();
+    createHostPlayer();
+  };
+}
+
+function createHostPlayer() {
+  hostPlayer = new YT.Player('hostPlayer', {
+    height: '180',
+    width: '320',
+    videoId: chosenVideo.videoId,
+    playerVars: { controls: 1 },
+    events: {
+      onReady: () => { hostPlayerReady = true; startBroadcast(); }
+    }
+  });
+}
+
+broadcastBtn.addEventListener('click', () => {
+  if (!hostPlayerReady) {
+    broadcastStatus.textContent = 'player not ready yet';
+    return;
+  }
+  if (broadcasting) {
+    stopBroadcast();
+  } else {
+    startBroadcast();
+  }
+});
+
+function startBroadcast() {
+  hostPlayer.playVideo();
+  broadcasting = true;
+  broadcastBtn.textContent = 'Stop Broadcasting';
+  broadcastStatus.textContent = 'broadcasting...';
+  activateMatch({
+    title: chosenVideo.title,
+    artist: chosenVideo.channel,
+    videoId: chosenVideo.videoId,
+    offsetSeconds: hostPlayer.getCurrentTime(),
+    epochMs: now(),
+    videoDurationSeconds: null
+  }, true, true);
+  pushAnchor();
+  logBroadcastStart();
+  broadcastTimer = setInterval(pushAnchor, 2000);
+  if (broadcastLifetimeTimer) clearTimeout(broadcastLifetimeTimer);
+  broadcastLifetimeTimer = setTimeout(() => {
+    if (broadcasting) {
+      stopBroadcast();
+      broadcastStatus.textContent = 'stopped automatically after 20 minutes unattended';
+    }
+  }, 1200000);
+}
+
+function stopBroadcast() {
+  broadcasting = false;
+  broadcastBtn.textContent = 'Play and Broadcast';
+  broadcastStatus.textContent = 'stopped';
+  if (broadcastTimer) clearInterval(broadcastTimer);
+  if (broadcastLifetimeTimer) clearTimeout(broadcastLifetimeTimer);
+}
+
+async function pushAnchor() {
+  if (!hostPlayer || !chosenVideo) return;
+  const loc = await getMyLocation();
+  if (!loc) {
+    broadcastStatus.textContent = 'location needed to broadcast, allow location access';
+    return;
+  }
+  const currentTime = hostPlayer.getCurrentTime();
+  const payload = {
+    title: chosenVideo.title,
+    artist: chosenVideo.channel,
+    videoId: chosenVideo.videoId,
+    offsetSeconds: currentTime,
+    epochMs: now(),
+    lat: loc.lat,
+    lng: loc.lng
+  };
+  try {
+    await fetch('/api/anchor', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    broadcastStatus.textContent = 'broadcast failed, retrying next cycle';
+  }
+}
+
+function getCoarseLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          lat: Math.round(pos.coords.latitude * 100) / 100,
+          lng: Math.round(pos.coords.longitude * 100) / 100
+        });
+      },
+      () => resolve(null),
+      { timeout: 4000, maximumAge: 300000 }
+    );
+  });
+}
+
+let myLocationPromise = null;
+function getMyLocation() {
+  if (!myLocationPromise) myLocationPromise = getCoarseLocation();
+  return myLocationPromise;
+}
+
+async function logBroadcastStart() {
+  if (!chosenVideo || !hostPlayer) return;
+  const loc = await getCoarseLocation();
+  try {
+    await fetch('/api/log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: chosenVideo.title,
+        artist: chosenVideo.channel,
+        videoId: chosenVideo.videoId,
+        offsetSeconds: hostPlayer.getCurrentTime(),
+        epochMs: now(),
+        lat: loc ? loc.lat : null,
+        lng: loc ? loc.lng : null
+      })
+    });
+  } catch (err) {}
+}
+
+const feedList = document.getElementById('feedList');
+
+function reportActivePosition() {
+  let title = null, videoId = null, position = null, paused = false;
+  if (broadcasting && hostPlayer && chosenVideo) {
+    title = chosenVideo.title;
+    videoId = chosenVideo.videoId;
+    position = hostPlayer.getCurrentTime();
+    paused = false;
+  } else if (syncLive && syncPlayer && lastMatch) {
+    title = lastMatch.title;
+    videoId = lastMatch.videoId;
+    position = syncPlayer.getCurrentTime();
+    paused = syncPaused;
+  } else if (pendingFeedEntry && feedPlayerReady && feedPlayer) {
+    title = pendingFeedEntry.title;
+    videoId = pendingFeedEntry.videoId;
+    position = feedPlayer.getCurrentTime();
+    paused = feedPaused;
+  } else {
+    return;
+  }
+  fetch('/api/positions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ deviceId, title, videoId, position, paused, nudgeMs })
+  }).catch(() => {});
+}
+setInterval(reportActivePosition, 1500);
+
+let beatmatchCandidate = null;
+let beatmatchCueOut = null;
+let beatmatchHandedOff = false;
+const beatmatchQueuedEl = document.getElementById('beatmatchQueued');
+
+async function fetchBeatmatchCandidate(title, artist) {
+  beatmatchCandidate = null;
+  beatmatchCueOut = null;
+  beatmatchHandedOff = false;
+  beatmatchQueuedEl.textContent = '';
+  try {
+    const allowSelf = document.getElementById('selfLoopToggle').checked;
+    const res = await fetch('/api/beatmatch?title=' + encodeURIComponent(title) + '&artist=' + encodeURIComponent(artist) + (allowSelf ? '&allowSelf=1' : ''), { cache: 'no-store' });
+    const data = await res.json();
+    if (data.currentCueOut) beatmatchCueOut = data.currentCueOut;
+    if (data.found && data.candidate) {
+      beatmatchCandidate = data.candidate;
+      beatmatchQueuedEl.textContent = 'queued next: ' + beatmatchCandidate.title + ' (cue in at ' + formatOffset(beatmatchCandidate.cueIn) + ')';
+    } else if (beatmatchCueOut) {
+      beatmatchQueuedEl.textContent = 'cue out tagged at ' + formatOffset(beatmatchCueOut) + ', no beatmatched follow-up queued yet';
+    }
+  } catch (err) {}
+}
+
+async function checkBeatmatchHandoff() {
+  if (!iAmHost || beatmatchHandedOff || !beatmatchCandidate || typeof beatmatchCueOut !== 'number') return;
+  if (currentIntendedPosition() < beatmatchCueOut) return;
+  beatmatchHandedOff = true;
+  const loc = await getMyLocation();
+  if (!loc) return;
+  try {
+    await fetch('/api/anchor', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: beatmatchCandidate.title,
+        artist: beatmatchCandidate.artist,
+        videoId: beatmatchCandidate.videoId,
+        offsetSeconds: beatmatchCandidate.cueIn,
+        epochMs: now(),
+        videoDurationSeconds: beatmatchCandidate.durationSeconds,
+        lat: loc.lat,
+        lng: loc.lng
+      })
+    });
+    logPlayEvent({
+      event: 'beatmatch_handoff',
+      title: beatmatchCandidate.title,
+      videoId: beatmatchCandidate.videoId,
+      position: beatmatchCandidate.cueIn,
+      nudgeMs: 0
+    });
+  } catch (err) {}
+}
+setInterval(checkBeatmatchHandoff, 2000);
+
+document.getElementById('cueTagBtn').addEventListener('click', async () => {
+  const cueTagStatus = document.getElementById('cueTagStatus');
+  if (!lastMatch) {
+    cueTagStatus.textContent = 'no song currently active';
+    return;
+  }
+  const cueIn = parseFloat(document.getElementById('cueInInput').value);
+  const cueOut = parseFloat(document.getElementById('cueOutInput').value);
+  if (isNaN(cueIn) || isNaN(cueOut)) {
+    cueTagStatus.textContent = 'enter both cue in and cue out';
+    return;
+  }
+  try {
+    const res = await fetch('/api/tag-cue', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: lastMatch.title, artist: lastMatch.artist, cueIn, cueOut })
+    });
+    const data = await res.json();
+    cueTagStatus.textContent = data.ok ? 'saved' : (data.error || 'failed to save');
+  } catch (err) {
+    cueTagStatus.textContent = 'failed to save';
+  }
+});
+
+const positionsList = document.getElementById('positionsList');
+
+async function pollPositions() {
+  try {
+    const res = await fetch('/api/positions', { cache: 'no-store' });
+    const data = await res.json();
+    renderPositions(data.devices || []);
+  } catch (err) {}
+}
+setInterval(pollPositions, 2000);
+
+const nearbyList = document.getElementById('nearbyList');
+
+async function pollNearbyBroadcasts() {
+  try {
+    const res = await fetch('/api/anchor?list=1', { cache: 'no-store' });
+    const data = await res.json();
+    const anchors = (data.anchors || []).filter(a => {
+      if (!a.videoId || typeof a.epochMs !== 'number') return false;
+      return (Date.now() - a.epochMs) < 3600000 && !anchorIsStale(a);
+    });
+
+    let positionsData = [];
+    try {
+      const posRes = await fetch('/api/positions', { cache: 'no-store' });
+      const posJson = await posRes.json();
+      positionsData = posJson.devices || [];
+    } catch (err) {}
+
+    renderNearby(anchors, positionsData);
+  } catch (err) {}
+}
+setInterval(pollNearbyBroadcasts, 3000);
+
+function renderNearby(anchors, positionsData) {
+  if (anchors.length === 0) {
+    nearbyList.innerHTML = '<div class="feedItem fs">no broadcasts active nearby right now</div>';
+    return;
+  }
+  anchors.sort((a, b) => b.epochMs - a.epochMs);
+  nearbyList.innerHTML = '';
+  anchors.forEach(a => {
+    const count = positionsData.filter(d =>
+      d.videoId === a.videoId && (Date.now() - (d.updatedAtEpochMs || 0)) < 60000
+    ).length;
+    const row = document.createElement('div');
+    row.className = 'feedItem';
+    row.innerHTML = '<div class="ft">' + escapeHtml(a.title) + '</div>' +
+      '<div class="fa">' + escapeHtml(a.artist || '') + '</div>' +
+      '<div class="fs">' + (a.geohash || '') + ' region, ' + count + (count === 1 ? ' phone listening' : ' phones listening') + '</div>';
+    row.addEventListener('click', () => activateMatch(a, false));
+    nearbyList.appendChild(row);
+  });
+}
+
+pollPositions();
+
+function renderPositions(devices) {
+  const live = devices.filter(d => (Date.now() - (d.updatedAtEpochMs || 0)) < 60000);
+  if (live.length === 0) {
+    positionsList.innerHTML = '<div class="feedItem fs">no phones reporting right now</div>';
+    return;
+  }
+  live.sort((a, b) => (b.updatedAtEpochMs || 0) - (a.updatedAtEpochMs || 0));
+  positionsList.innerHTML = '';
+  live.forEach(d => {
+    const staleSec = Math.max(0, Math.round((Date.now() - (d.updatedAtEpochMs || 0)) / 1000));
+    const isMe = d.deviceId === deviceId;
+    const row = document.createElement('div');
+    row.className = 'feedItem';
+    if (isMe) row.style.cursor = 'default';
+    const nameColor = isMe ? '#333' : '#1a4fa0';
+    row.innerHTML = '<div style="color:' + nameColor + ';font-weight:bold;">' + escapeHtml(d.deviceId) + (isMe ? ' (this phone)' : '') + '</div>' +
+      '<div class="fa">' + escapeHtml(d.title || '') + (d.paused ? ' — paused' : '') + '</div>' +
+      '<div class="fs">' + formatOffset(d.position || 0) + ' · updated ' + staleSec + 's ago · nudge ' +
+      (d.nudgeMs >= 0 ? '+' : '') + (d.nudgeMs / 1000).toFixed(1) + 's</div>';
+    if (!isMe && d.videoId) {
+      row.addEventListener('click', () => {
+        activateMatch({
+          title: d.title,
+          artist: '',
+          videoId: d.videoId,
+          offsetSeconds: d.position || 0,
+          epochMs: d.updatedAtEpochMs,
+          videoDurationSeconds: null
+        }, false);
+      });
+    }
+    positionsList.appendChild(row);
+  });
+}
+
+document.getElementById('broadcastNudgeBack').addEventListener('click', () => applyBroadcastNudge(-500));
+document.getElementById('broadcastNudgeForward').addEventListener('click', () => applyBroadcastNudge(500));
+
+async function applyBroadcastNudge(deltaMs) {
+  const statusEl = document.getElementById('broadcastNudgeStatus');
+  const loc = await getMyLocation();
+  if (!loc) {
+    statusEl.textContent = 'location needed to adjust broadcast timing';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+    return;
+  }
+  try {
+    const res = await fetch('/api/anchor?lat=' + loc.lat + '&lng=' + loc.lng, { cache: 'no-store' });
+    const anchor = await res.json();
+    if (!anchor || anchor.error || typeof anchor.epochMs !== 'number') {
+      statusEl.textContent = 'no active broadcast to adjust';
+      setTimeout(() => { statusEl.textContent = ''; }, 2000);
+      return;
+    }
+    const updated = {
+      title: anchor.title,
+      artist: anchor.artist,
+      offsetSeconds: anchor.offsetSeconds,
+      epochMs: anchor.epochMs - deltaMs,
+      videoId: anchor.videoId,
+      videoDurationSeconds: anchor.videoDurationSeconds,
+      lat: loc.lat,
+      lng: loc.lng
+    };
+    await fetch('/api/anchor', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(updated)
+    });
+    statusEl.textContent = 'shifted ' + (deltaMs > 0 ? '+' : '') + (deltaMs / 1000).toFixed(1) + 's for everyone';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  } catch (err) {
+    statusEl.textContent = 'failed to adjust';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  }
+}
+
+async function pollFeed() {
+  try {
+    const res = await fetch('/api/log', { cache: 'no-store' });
+    const data = await res.json();
+    renderFeed(data.entries || []);
+  } catch (err) {
+    // leave last known feed showing
+  }
+}
+
+let feedDetailsOpen = false;
+function renderFeed(entries) {
+  if (entries.length === 0) {
+    feedList.innerHTML = '<div class="feedItem fs">nothing heard yet</div>';
+    return;
+  }
+  const ONE_HOUR_MS = 3600000;
+  const VISIBLE_COUNT = 5;
+  const nowMs = Date.now();
+
+  const fresh = entries.filter(e => (nowMs - e.epochMs) < ONE_HOUR_MS);
+  const stale = entries.filter(e => (nowMs - e.epochMs) >= ONE_HOUR_MS);
+
+  const recent = fresh.slice(0, VISIBLE_COUNT);
+  const older = fresh.slice(VISIBLE_COUNT).concat(stale);
+
+  feedList.innerHTML = '';
+  if (recent.length === 0) {
+    feedList.innerHTML = '<div class="feedItem fs">nothing heard recently</div>';
+  } else {
+    recent.forEach(e => feedList.appendChild(buildFeedRow(e)));
+  }
+
+  if (older.length > 0) {
+    const details = document.createElement('details');
+    details.style.marginTop = '10px';
+    details.open = feedDetailsOpen;
+    details.addEventListener('toggle', () => { feedDetailsOpen = details.open; });
+    const summary = document.createElement('summary');
+    summary.style.cursor = 'pointer';
+    summary.style.color = '#999';
+    summary.style.fontSize = '0.85rem';
+    summary.textContent = 'earlier (' + older.length + ')';
+    details.appendChild(summary);
+    older.forEach(e => details.appendChild(buildFeedRow(e)));
+    feedList.appendChild(details);
+  }
+}
+
+function buildFeedRow(e) {
+  const row = document.createElement('div');
+  row.className = 'feedItem';
+  const secondsAgo = Math.max(0, Math.round((Date.now() - e.epochMs) / 1000));
+  const locText = (typeof e.lat === 'number' && typeof e.lng === 'number')
+    ? ' · ~' + e.lat.toFixed(2) + ', ' + e.lng.toFixed(2)
+    : '';
+  row.innerHTML = '<div class="ft">' + escapeHtml(e.title) + '</div>' +
+    '<div class="fa">' + escapeHtml(e.artist) + '</div>' +
+    '<div class="fs">' + secondsAgo + 's ago' + locText + '</div>';
+  row.addEventListener('click', () => playFeedEntry(e));
+  return row;
+}
+
+const feedPlayerStatus = document.getElementById('feedPlayerStatus');
+const feedPauseBtn = document.getElementById('feedPauseBtn');
+let feedPlayer = null;
+let feedPlayerReady = false;
+let pendingFeedEntry = null;
+let feedPaused = false;
+
+feedPauseBtn.addEventListener('click', () => {
+  if (!feedPlayer) return;
+  if (feedPaused) {
+    feedPlayer.playVideo();
+    feedPauseBtn.textContent = 'Pause';
+  } else {
+    feedPlayer.pauseVideo();
+    feedPauseBtn.textContent = 'Resume';
+  }
+  feedPaused = !feedPaused;
+});
+
+function playFeedEntry(entry) {
+  if (!entry.videoId) {
+    feedPlayerStatus.textContent = 'no video linked to this entry';
+    return;
+  }
+  pendingFeedEntry = entry;
+  if (!feedPlayer) {
+    if (window.YT && window.YT.Player) {
+      createFeedPlayer();
+    } else {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.body.appendChild(tag);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function () {
+        if (prev) prev();
+        createFeedPlayer();
+      };
+    }
+  } else if (feedPlayerReady) {
+    firePendingFeedEntry();
+  }
+}
+
+function createFeedPlayer() {
+  feedPlayer = new YT.Player('feedPlayer', {
+    height: '1',
+    width: '1',
+    playerVars: { controls: 0 },
+    events: {
+      onReady: () => { feedPlayerReady = true; firePendingFeedEntry(); }
+    }
+  });
+}
+
+function firePendingFeedEntry() {
+  if (!pendingFeedEntry || !feedPlayerReady) return;
+  const e = pendingFeedEntry;
+  const elapsedSinceHeard = Math.max(0, (Date.now() - e.epochMs) / 1000);
+  const position = (e.offsetSeconds || 0) + elapsedSinceHeard;
+  feedPlayerStatus.textContent = 'playing: ' + e.title + ' — ' + e.artist;
+  feedPlayer.loadVideoById(e.videoId, Math.max(position, 0));
+  feedPauseBtn.style.display = 'inline-block';
+  feedPaused = false;
+  feedPauseBtn.textContent = 'Pause';
+  logPlayEvent({
+    event: 'feed_play',
+    title: e.title,
+    videoId: e.videoId,
+    position: Math.max(position, 0),
+    nudgeMs
+  });
+}
+
+pollFeed();
+setInterval(pollFeed, 3000);
+</script>
+  <!-- =====================================================================
+       MOHAVE TECHNOLOGY GROUP // CREATOR SEAL
+       Drop this ONE block into any HTML page, anywhere before </body>.
+       The only thing you edit is the CONFIG object on the next few lines.
+       ===================================================================== -->
+  <script>
+  (function () {
+
+    /* RED PHONE: Pajamastan flag as a data URI. Self-contained so the seal
+       stays a single drop-in block with no external image to host. */
+    var FLAG_SRC = "/flag.jpg";
+
+    /* ---------- CONFIG: the only part you change ---------- */
+    var CONFIG = {
+      org:      "Mohave Technology Group",
+      mission:  "Practical software and hardware, built in the field.",
+
+      // RED PHONE: Pajamastan export homage.
+      nation:   "Pajamastan",
+      site:     "https://pajamastan.vercel.app",
+      flag:     FLAG_SRC,
+
+      github:   "https://github.com/sudosilo",
+      linkedin: "https://www.linkedin.com/in/dicktemple"
+    };
+    /* ----------------------------------------------------- */
+
+
+    /* ---------- LAYER 1: the signature pressed into the source ---------- */
+    var head = document.head || document.getElementsByTagName("head")[0];
+
+    head.appendChild(document.createComment(
+      " Made by " + CONFIG.org + " // " + CONFIG.github + " // " + CONFIG.linkedin + " "
+    ));
+    // RED PHONE: export origin banner in the source.
+    head.appendChild(document.createComment(
+      " Certified export of " + CONFIG.nation + " // " + CONFIG.site + " "
+    ));
+
+    var metaAuthor = document.createElement("meta");
+    metaAuthor.setAttribute("name", "author");
+    metaAuthor.setAttribute("content", CONFIG.org);
+    head.appendChild(metaAuthor);
+
+    // RED PHONE: export-origin meta tag.
+    var metaOrigin = document.createElement("meta");
+    metaOrigin.setAttribute("name", "x-export-origin");
+    metaOrigin.setAttribute("content", CONFIG.nation);
+    head.appendChild(metaOrigin);
+
+    [CONFIG.github, CONFIG.linkedin].forEach(function (url) {
+      var l = document.createElement("link");
+      l.setAttribute("rel", "me");
+      l.setAttribute("href", url);
+      head.appendChild(l);
+    });
+
+    var ld = document.createElement("script");
+    ld.type = "application/ld+json";
+    ld.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": CONFIG.org,
+      "url": CONFIG.site,
+      "sameAs": [CONFIG.github, CONFIG.linkedin]
+    });
+    head.appendChild(ld);
+
+
+    /* ---------- LAYER 2: the visible seal ---------- */
+
+    var css = ''
+      + '.mtg-seal{box-sizing:border-box;width:100%;background:#efe9da;'
+      + 'border-top:1px solid #cabfa3;color:#2b2620;'
+      + 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;'
+      + 'padding:18px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;}'
+      + '.mtg-seal-row{display:flex;align-items:center;gap:14px;}'
+      // RED PHONE: round flag badge, brand-red ring to echo the old seal.
+      + '.mtg-flag-btn{background:none;border:0;padding:0;margin:0;cursor:pointer;'
+      + 'display:flex;align-items:center;line-height:0;'
+      + 'transition:transform .18s ease;}'
+      + '.mtg-seal.open .mtg-flag-btn{transform:scale(.94);}'
+      + '.mtg-flag{width:48px;height:72px;border-radius:8px;object-fit:cover;'
+      + 'display:block;border:2px solid #7a2e28;box-shadow:0 1px 3px rgba(43,38,32,.25);}'
+      + '.mtg-seal-label{text-align:left;line-height:1.35;}'
+      + '.mtg-seal-org{display:block;font-family:Georgia,"Times New Roman",serif;'
+      + 'font-size:14px;letter-spacing:.3px;color:#2b2620;}'
+      // RED PHONE: export subtitle with an inline linkable nation word.
+      + '.mtg-seal-export{display:block;font-family:Georgia,"Times New Roman",serif;'
+      + 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#4a443b;margin:2px 0;}'
+      + '.mtg-seal-link{color:#7a2e28;text-decoration:underline;}'
+      + '.mtg-seal-link:hover{color:#5f231e;}'
+      + '.mtg-seal-ask{display:inline-block;background:none;border:0;padding:0;margin:0;'
+      + 'font:inherit;font-size:12px;color:#7a2e28;text-decoration:underline;cursor:pointer;}'
+      + '.mtg-seal-panel{overflow:hidden;max-height:0;opacity:0;'
+      + 'transition:max-height .25s ease,opacity .25s ease;width:100%;max-width:360px;}'
+      + '.mtg-seal.open .mtg-seal-panel{max-height:300px;opacity:1;}'
+      + '.mtg-seal-mission{font-style:italic;color:#4a443b;font-size:13px;'
+      + 'text-align:center;margin:0 0 12px;line-height:1.5;}'
+      + '.mtg-seal-links{display:flex;justify-content:center;gap:10px;}'
+      + '.mtg-seal-links a{flex:1;text-align:center;text-decoration:none;'
+      + 'font-size:13px;color:#2b2620;background:#faf7ef;border:1px solid #cabfa3;'
+      + 'border-radius:6px;padding:8px 10px;transition:background .15s ease;}'
+      + '.mtg-seal-links a:hover{background:#fff;}'
+      + '.mtg-flag-btn:focus-visible,.mtg-seal-ask:focus-visible,'
+      + '.mtg-seal-link:focus-visible{outline:2px solid #7a2e28;outline-offset:3px;border-radius:4px;}'
+      + '.mtg-seal-links a:focus-visible{outline:2px solid #7a2e28;outline-offset:2px;}'
+      + '@media (prefers-reduced-motion: reduce){'
+      + '.mtg-flag-btn,.mtg-seal-panel{transition:none;}}';
+
+    var style = document.createElement("style");
+    style.textContent = css;
+    head.appendChild(style);
+
+    var seal = document.createElement("footer");
+    seal.className = "mtg-seal";
+    seal.innerHTML = ''
+      + '<div class="mtg-seal-row">'
+      +   '<button class="mtg-flag-btn" type="button" aria-label="Toggle maker details">'
+      +     '<img class="mtg-flag" src="' + CONFIG.flag + '" alt="' + CONFIG.nation + ' flag">'
+      +   '</button>'
+      +   '<span class="mtg-seal-label">'
+      +     '<span class="mtg-seal-org">' + CONFIG.org + '</span>'
+      +     '<span class="mtg-seal-export">Certified export of '
+      +       '<a class="mtg-seal-link" href="' + CONFIG.site + '" target="_blank" rel="noopener">'
+      +       CONFIG.nation + '</a></span>'
+      +     '<button class="mtg-seal-ask" type="button" aria-expanded="false">Who made this?</button>'
+      +   '</span>'
+      + '</div>'
+      + '<div class="mtg-seal-panel">'
+      +   '<p class="mtg-seal-mission">' + CONFIG.mission + '</p>'
+      +   '<div class="mtg-seal-links">'
+      +     '<a href="' + CONFIG.site + '" target="_blank" rel="noopener">' + CONFIG.nation + '</a>'
+      +     '<a href="' + CONFIG.github + '" target="_blank" rel="noopener me">GitHub</a>'
+      +     '<a href="' + CONFIG.linkedin + '" target="_blank" rel="noopener me">LinkedIn</a>'
+      +   '</div>'
+      + '</div>';
+
+    // RED PHONE: flag badge and "Who made this?" both toggle the panel.
+    var ask = seal.querySelector(".mtg-seal-ask");
+    var flagBtn = seal.querySelector(".mtg-flag-btn");
+    function toggle() {
+      var nowOpen = seal.classList.toggle("open");
+      ask.setAttribute("aria-expanded", nowOpen ? "true" : "false");
+    }
+    ask.addEventListener("click", toggle);
+    flagBtn.addEventListener("click", toggle);
+
+    document.body.appendChild(seal);
+
+  })();
+  </script>
+  <!-- ===================== END CREATOR SEAL ===================== -->
+
+</body>
+</html>
