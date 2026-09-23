@@ -2,7 +2,16 @@ import { writeAnchor, anchorKeyFor } from '../lib/anchor-store.js';
 
 export const config = { runtime: 'edge' };
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS'
+};
+
 export default async function handler(request) {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {
@@ -67,19 +76,19 @@ export default async function handler(request) {
 
   const data = await res.json();
   if (!data.result) {
-    return new Response(JSON.stringify({ error: 'no anchor set yet in this region', geohash: built.geohash }), { status: 200 });
+    return new Response(JSON.stringify({ error: 'no anchor set yet in this region', geohash: built.geohash }), { status: 200, headers: CORS_HEADERS });
   }
 
   let anchor;
   try {
     anchor = JSON.parse(data.result);
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'anchor unreadable' }), { status: 200 });
+    return new Response(JSON.stringify({ error: 'anchor unreadable' }), { status: 200, headers: CORS_HEADERS });
   }
 
   return new Response(JSON.stringify(anchor), {
     status: 200,
-    headers: { 'content-type': 'application/json' }
+    headers: Object.assign({ 'content-type': 'application/json' }, CORS_HEADERS)
   });
 }
 
@@ -91,7 +100,7 @@ async function listActiveAnchors(url, token) {
     const keysData = await keysRes.json();
     const keys = keysData.result || [];
     if (keys.length === 0) {
-      return new Response(JSON.stringify({ anchors: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ anchors: [] }), { status: 200, headers: Object.assign({ 'content-type': 'application/json' }, CORS_HEADERS) });
     }
 
     const anchors = [];
@@ -105,7 +114,7 @@ async function listActiveAnchors(url, token) {
       } catch (err) { /* skip unreadable entry */ }
     }
 
-    return new Response(JSON.stringify({ anchors }), { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify({ anchors }), { status: 200, headers: Object.assign({ 'content-type': 'application/json' }, CORS_HEADERS) });
   } catch (err) {
     return new Response(JSON.stringify({ error: 'redis request failed' }), { status: 502 });
   }
