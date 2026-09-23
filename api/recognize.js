@@ -5,26 +5,34 @@ import { findBpmAndKey } from '../lib/getsongbpm.js';
 
 export const config = { runtime: 'edge' };
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+};
+
 export default async function handler(request) {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'POST only' }), { status: 405 });
+    return new Response(JSON.stringify({ error: 'POST only' }), { status: 405, headers: CORS_HEADERS });
   }
 
   const token = process.env.AUDD_API_TOKEN;
   if (!token) {
-    return new Response(JSON.stringify({ error: 'AUDD_API_TOKEN not configured' }), { status: 500 });
+    return new Response(JSON.stringify({ error: 'AUDD_API_TOKEN not configured' }), { status: 500, headers: CORS_HEADERS });
   }
 
   let incoming;
   try {
     incoming = await request.formData();
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'bad form data' }), { status: 400 });
+    return new Response(JSON.stringify({ error: 'bad form data' }), { status: 400, headers: CORS_HEADERS });
   }
 
   const audioFile = incoming.get('audio');
   if (!audioFile) {
-    return new Response(JSON.stringify({ error: 'no audio field' }), { status: 400 });
+    return new Response(JSON.stringify({ error: 'no audio field' }), { status: 400, headers: CORS_HEADERS });
   }
 
   const clipDurationMs = Number(incoming.get('clipDurationMs')) || 9000;
@@ -47,18 +55,18 @@ export default async function handler(request) {
   try {
     auddRes = await fetch('https://api.audd.io/', { method: 'POST', body: outgoing });
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'audd request failed' }), { status: 502 });
+    return new Response(JSON.stringify({ error: 'audd request failed' }), { status: 502, headers: CORS_HEADERS });
   }
 
   const data = await auddRes.json();
 
   if (data.status === 'error') {
     const auddMessage = (data.error && data.error.error_message) ? data.error.error_message : 'unknown audd error';
-    return new Response(JSON.stringify({ error: 'audd: ' + auddMessage }), { status: 200 });
+    return new Response(JSON.stringify({ error: 'audd: ' + auddMessage }), { status: 200, headers: CORS_HEADERS });
   }
 
   if (data.status !== 'success' || !data.result) {
-    return new Response(JSON.stringify({ error: 'no match found' }), { status: 200 });
+    return new Response(JSON.stringify({ error: 'no match found' }), { status: 200, headers: CORS_HEADERS });
   }
 
   const result = data.result;
@@ -164,7 +172,7 @@ export default async function handler(request) {
     bpm: match ? match.bpm : null,
     key: match ? match.key : null,
     raw: result
-  }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }), { status: 200, headers: Object.assign({ 'content-type': 'application/json' }, CORS_HEADERS) });
 }
 
 async function indexBpm(cacheKey, bpm) {
