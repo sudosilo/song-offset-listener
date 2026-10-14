@@ -107,6 +107,11 @@
   #gate h2 { font-size: 13px; letter-spacing: 3px; color: var(--ink-soft); font-weight: 600; margin: 18px 0 6px; }
   #gate p { font-size: 14px; color: var(--ink-soft); max-width: 280px; line-height: 1.5; }
   #connectBtn { margin-top: 22px; padding: 16px 34px; font-size: 16px; border-radius: 12px; border: 0; background: var(--ink); color: #fff; letter-spacing: 1px; }
+  .delayKey { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--chassis-edge); background: var(--key); color: var(--ink); }
+  .pred { font-size: 13px; padding: 8px 0; border-top: 1px solid #e6e2d9; display: flex; justify-content: space-between; gap: 10px; }
+  .pred:first-child { border-top: 0; }
+  .pred span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pred span:last-child { color: var(--ink-faint); font-size: 11px; flex: none; }
   #gateStatus { margin-top: 14px; font-size: 12px; color: var(--accent); min-height: 16px; }
 </style>
 </head>
@@ -172,17 +177,27 @@
 </div>
 
 <div class="card">
+  <div class="cardTitle"><span>Next in rotation</span><span class="mono" id="callTag"></span></div>
+  <div id="nextList"><div class="hist"><span style="color:var(--ink-faint)">Learning this site's rotation</span><span></span></div></div>
+</div>
+
+<div class="card">
   <div class="cardTitle"><span>Play history</span><span class="mono" id="histCount"></span></div>
-  <div id="history"><div class="hist"><span style="color:var(--ink-faint)">Nothing logged yet this shift</span><span></span></div></div>
+  <div class="mono" id="siteTag" style="font-size:10px;letter-spacing:1px;color:var(--ink-faint);margin:-4px 0 6px;">SITE LOCATING...</div>
+  <div id="history"><div class="hist"><span style="color:var(--ink-faint)">Nothing logged yet at this site</span><span></span></div></div>
 </div>
 
 <div class="card">
   <div class="cardTitle"><span>System</span><span></span></div>
   <div class="toggleRow"><span>Auto follow rotation</span><input type="checkbox" id="followToggle" checked></div>
   <div class="toggleRow"><span>Keep screen awake</span><input type="checkbox" id="wakeToggle" checked></div>
+  <div class="toggleRow"><span>Handset audio</span><span class="mono" id="audioState">LIVE</span></div>
+  <div class="toggleRow"><span>Output delay</span><span style="display:flex;gap:6px;align-items:center;">
+    <button class="mono delayKey" data-d="-100">-</button><span class="mono" id="delayVal" style="min-width:64px;text-align:center;">+0 ms</span><button class="mono delayKey" data-d="100">+</button><button class="mono delayKey" data-d="0">RST</button></span></div>
   <div class="toggleRow"><span>Resync now</span><button id="resyncBtn" class="mono" style="padding:6px 12px;border-radius:8px;border:1px solid var(--chassis-edge);background:var(--key);">SYNC</button></div>
 </div>
 
+<div id="zonePlayer" style="position:fixed;width:1px;height:1px;left:-10px;bottom:0;overflow:hidden;opacity:0;pointer-events:none;"></div>
 <script>
 const CLIP_MS = 9000;
 const $ = (id) => document.getElementById(id);
@@ -309,6 +324,8 @@ async function connect() {
   timeData = new Uint8Array(analyser.fftSize);
   $('gate').classList.add('hidden');
   requestWake();
+  ensurePlayer();
+  getVenueLoc().then(() => fetchVenue(null));
   drawMeters();
   log('LINK', 'handshake with zone controller...', 0);
   identify();
@@ -384,6 +401,11 @@ async function identify() {
     form.append('audio', blob, 'clip.webm');
     form.append('capturedAt', String(capturedAt));
     form.append('clipDurationMs', String(CLIP_MS));
+    const loc = await getVenueLoc();
+    if (loc) {
+      form.append('lat', String(Math.round(loc.lat * 100) / 100));
+      form.append('lng', String(Math.round(loc.lng * 100) / 100));
+    }
     const res = await fetch('/api/recognize', { method: 'POST', body: form });
     data = await res.json();
   } catch (err) {
@@ -434,14 +456,18 @@ async function identify() {
       current.durationSeconds = position() + 20;
     }
     renderTrack();
+    syncAudio(true);
     if (!skipQueued) log('SYNC', 'zone clock aligned');
     scheduleFromTrack();
     return;
   }
 
   if (current) pushHistory(current);
+  scorePrediction(fresh);
   current = fresh;
   renderTrack();
+  syncAudio(true);
+  postVenuePlay(fresh).then(() => fetchVenue(fresh));
   if (skipQueued) {
     skipQueued = false;
     $('skipBtn').classList.remove('armed');
@@ -470,6 +496,7 @@ function renderTrack() {
 function pushHistory(t) {
   history.unshift({ title: t.title, artist: t.artist, at: t.startedAt });
   if (history.length > 25) history.pop();
+  if (venueHistoryShown) return;
   $('history').innerHTML = '';
   history.forEach(h => {
     const d = new Date(h.at);
@@ -491,7 +518,7 @@ function tickProgress() {
       const p = Math.min(100, (pos / dur) * 100);
       $('progress').style.width = p + '%';
       $('remaining').textContent = '-' + fmt(Math.max(0, dur - pos));
-      if (skipQueued) log('SKIP', 'queued, crossfade in ' + fmt(Math.max(0, dur - pos)), 0);
+      if (skipQueued) log('SKIP', 'queued, crossfade in ' + fmt(Math.max(0, dur - pos)) + (predicted[0] ? ', next up ' + predicted[0].title : ''), 0);
     } else {
       $('progress').style.width = '100%';
       $('remaining').textContent = 'LIVE';
@@ -502,16 +529,24 @@ function tickProgress() {
 }
 tickProgress();
 
-const pauseReplies = [
-  'blocked, brand schedule lock active. Manager key required.',
-  'denied, zone is under corporate daypart control.',
-  'held for approval, request sent to district audio.'
-];
-let pauseIdx = 0;
+const ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>';
+const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></svg>';
+function renderAudioKey() {
+  $('pauseBtn').innerHTML = audioOn ? ICON_PAUSE : ICON_PLAY;
+  $('pauseBtn').setAttribute('aria-label', audioOn ? 'Pause' : 'Play');
+  $('audioState').textContent = audioOn ? 'LIVE' : 'PAUSED';
+}
 $('pauseBtn').addEventListener('click', () => {
-  if (!current) { log('PAUSE', 'no program loaded'); return; }
-  log('PAUSE', 'sending to all zones...', 0);
-  setTimeout(() => { log('PAUSE', pauseReplies[pauseIdx % pauseReplies.length], 7000); pauseIdx++; }, 900);
+  audioOn = !audioOn;
+  renderAudioKey();
+  ensurePlayer();
+  if (audioOn) {
+    syncAudio(true);
+    log('PLAY', current ? 'handset output live, locked to ' + current.title : 'handset output armed, waiting for program');
+  } else {
+    syncAudio(false);
+    log('PAUSE', 'handset output paused');
+  }
 });
 
 $('skipBtn').addEventListener('click', () => {
@@ -541,6 +576,170 @@ $('followToggle').addEventListener('change', () => {
   if ($('followToggle').checked) scheduleFromTrack();
   else if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
 });
+
+let ytLoading = false;
+const ytQueue = [];
+function whenYouTubeReady(cb) {
+  if (window.YT && window.YT.Player) { cb(); return; }
+  ytQueue.push(cb);
+  if (ytLoading) return;
+  ytLoading = true;
+  window.onYouTubeIframeAPIReady = function () {
+    ytQueue.splice(0).forEach(f => { try { f(); } catch (err) {} });
+  };
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.body.appendChild(tag);
+}
+
+let player = null, playerReady = false, loadedVideo = null, audioOn = true;
+let delayMs = (() => { try { return parseInt(localStorage.getItem('halvard:delay') || '0', 10) || 0; } catch (e) { return 0; } })();
+function renderDelay() { $('delayVal').textContent = (delayMs >= 0 ? '+' : '') + delayMs + ' ms'; }
+renderDelay();
+document.querySelectorAll('.delayKey').forEach(b => b.addEventListener('click', () => {
+  const d = parseInt(b.getAttribute('data-d'), 10);
+  delayMs = d === 0 ? 0 : delayMs + d;
+  try { localStorage.setItem('halvard:delay', String(delayMs)); } catch (e) {}
+  renderDelay();
+  syncAudio(true);
+}));
+
+function ensurePlayer() {
+  if (player) return;
+  whenYouTubeReady(() => {
+    if (player) return;
+    player = new YT.Player('zonePlayer', {
+      height: '1', width: '1',
+      playerVars: { controls: 0, playsinline: 1, rel: 0 },
+      events: {
+        onReady: () => { playerReady = true; syncAudio(true); },
+        onStateChange: (e) => { if (e.data === YT.PlayerState.PLAYING && !audioOn) { try { player.pauseVideo(); } catch (err) {} } },
+        onError: () => { log('FEED', 'handset copy unavailable for this track'); }
+      }
+    });
+  });
+}
+function targetPos() { return position() + delayMs / 1000; }
+function syncAudio(force) {
+  if (!playerReady || !player || typeof player.seekTo !== 'function') return;
+  if (!audioOn || !current || !current.videoId) { try { player.pauseVideo(); } catch (e) {} return; }
+  const t = Math.max(0, targetPos());
+  if (current.durationSeconds && t > current.durationSeconds + 1) { try { player.pauseVideo(); } catch (e) {} return; }
+  try {
+    if (loadedVideo !== current.videoId) {
+      loadedVideo = current.videoId;
+      player.mute();
+      player.loadVideoById(current.videoId, t);
+      setTimeout(() => {
+        try { player.seekTo(Math.max(0, targetPos()), true); if (audioOn) { player.playVideo(); player.unMute(); } } catch (err) {}
+      }, 800);
+      return;
+    }
+    const cur = player.getCurrentTime();
+    const state = player.getPlayerState();
+    if (force || state !== 1 || Math.abs(cur - t) > 0.6) {
+      player.seekTo(t, true);
+      player.playVideo();
+      player.unMute();
+    }
+  } catch (err) {}
+}
+setInterval(() => syncAudio(false), 3000);
+
+let venueLoc = null, venueLocAt = 0, venueLocPending = null;
+function getVenueLoc() {
+  if (venueLoc && Date.now() - venueLocAt < 120000) return Promise.resolve(venueLoc);
+  if (venueLocPending) return venueLocPending;
+  venueLocPending = new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(venueLoc); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { venueLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }; venueLocAt = Date.now(); resolve(venueLoc); },
+      () => resolve(venueLoc),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  }).finally(() => { venueLocPending = null; });
+  return venueLocPending;
+}
+function deviceId() {
+  let id = null;
+  try { id = localStorage.getItem('halvard:device'); } catch (e) {}
+  if (!id) { id = 'zone-' + Math.random().toString(36).slice(2, 8); try { localStorage.setItem('halvard:device', id); } catch (e) {} }
+  return id;
+}
+function songKeyOf(title, artist) {
+  const n = (s) => (s || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^a-z0-9]/g, '');
+  return n(title) + '|' + n(artist);
+}
+function siteNameToSend() {
+  const v = $('siteName').value.trim();
+  return v && v.toLowerCase() !== 'main floor' ? v : null;
+}
+async function postVenuePlay(t) {
+  const loc = await getVenueLoc();
+  if (!loc) return;
+  try {
+    await fetch('/api/venue-plays', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lat: loc.lat, lng: loc.lng, title: t.title, artist: t.artist, videoId: t.videoId, durationSeconds: t.durationSeconds, at: Date.now(), deviceId: deviceId(), siteName: siteNameToSend() })
+    });
+  } catch (e) {}
+}
+
+let predicted = [];
+let calls = (() => { try { return JSON.parse(localStorage.getItem('halvard:calls') || '{"hit":0,"total":0}'); } catch (e) { return { hit: 0, total: 0 }; } })();
+function renderCalls() { $('callTag').textContent = calls.total ? 'CALLED ' + calls.hit + '/' + calls.total : ''; }
+renderCalls();
+function scorePrediction(fresh) {
+  if (!predicted.length) return;
+  const k = songKeyOf(fresh.title, fresh.artist);
+  calls.total++;
+  if (predicted[0].key === k) { calls.hit++; log('CALL', 'predicted correctly, ' + fresh.title, 8000); }
+  try { localStorage.setItem('halvard:calls', JSON.stringify(calls)); } catch (e) {}
+  renderCalls();
+}
+
+let venueHistoryShown = false;
+async function fetchVenue(t) {
+  const loc = await getVenueLoc();
+  if (!loc) { $('siteTag').textContent = 'SITE UNKNOWN, LOCATION OFF'; return; }
+  let q = '/api/venue-plays?lat=' + loc.lat + '&lng=' + loc.lng;
+  if (t) q += '&title=' + encodeURIComponent(t.title) + '&artist=' + encodeURIComponent(t.artist || '');
+  let data;
+  try { data = await (await fetch(q, { cache: 'no-store' })).json(); } catch (e) { return; }
+  if (!data || data.error) return;
+  $('siteTag').textContent = 'SITE ' + String(data.venue).toUpperCase() + ' / ' + data.catalogSize + ' KNOWN TRACKS' + (loc.acc ? ' / GPS ' + Math.round(loc.acc) + 'M' : '');
+  if (data.name && $('siteName').value.trim().toLowerCase() === 'main floor') $('siteName').value = data.name;
+  if (data.plays && data.plays.length) {
+    venueHistoryShown = true;
+    $('history').innerHTML = '';
+    data.plays.forEach(h => {
+      const d = new Date(h.at);
+      const sameDay = new Date().toDateString() === d.toDateString();
+      const row = document.createElement('div');
+      row.className = 'hist';
+      row.innerHTML = '<span>' + esc(h.title) + ' <span style="color:var(--ink-faint)">' + esc(h.artist) + '</span></span>' +
+        '<span class="mono">' + (sameDay ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + '</span>';
+      $('history').appendChild(row);
+    });
+    $('histCount').textContent = data.plays.length + ' TRACKS HERE';
+  }
+  if (t) {
+    predicted = data.predictions || [];
+    $('nextList').innerHTML = '';
+    if (!predicted.length) {
+      $('nextList').innerHTML = '<div class="pred"><span style="color:var(--ink-faint)">No pattern after this track yet, still learning</span><span></span></div>';
+    } else {
+      predicted.slice(0, 3).forEach(pr => {
+        const row = document.createElement('div');
+        row.className = 'pred';
+        row.innerHTML = '<span>' + esc(pr.title) + ' <span style="color:var(--ink-faint)">' + esc(pr.artist) + '</span></span>' +
+          '<span class="mono">' + Math.round(pr.share * 100) + '% ' + (pr.source === 'here' ? 'HERE' : 'ELSEWHERE') + ' x' + pr.count + '</span>';
+        $('nextList').appendChild(row);
+      });
+    }
+  }
+}
 
 const canvas = $('spectrum');
 const ctx2 = canvas.getContext('2d');
