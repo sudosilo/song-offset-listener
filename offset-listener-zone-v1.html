@@ -54,7 +54,27 @@
   #menu a.here { color: var(--accent); }
 
   .siteRow { display: flex; align-items: center; justify-content: space-between; margin: 14px 2px 8px; font-size: 11px; letter-spacing: 1px; color: var(--ink-soft); text-transform: uppercase; }
-  #siteName { font: inherit; color: var(--ink); background: transparent; border: 0; border-bottom: 1px dashed var(--chassis-edge); padding: 2px 0; width: 60%; text-transform: uppercase; letter-spacing: 1px; outline: none; }
+  #siteName { font: inherit; color: var(--ink); background: transparent; border: 0; border-bottom: 1px dashed var(--chassis-edge); padding: 2px 0; max-width: 70%; text-align: left; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  #siteName::after { content: " \25BE"; color: var(--ink-faint); }
+  #siteName.unsaved { color: var(--accent); }
+  #sheet { position: fixed; inset: 0; background: var(--chassis); z-index: 40; display: none; overflow-y: auto; padding: 14px 14px 40px; }
+  #sheet.open { display: block; }
+  .sheetIn { max-width: 480px; margin: 0 auto; }
+  .sheetHead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .sheetHead b { flex: 1; letter-spacing: 3px; font-size: 14px; }
+  .tabBtn, .sbtn { padding: 9px 14px; border-radius: 10px; border: 1px solid var(--chassis-edge); background: var(--key); color: var(--ink); font: 600 12px/1 ui-monospace, Menlo, monospace; letter-spacing: 1px; text-transform: uppercase; }
+  .tabBtn.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .sbtn.go { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .sbtn.warn { color: var(--accent); border-color: var(--accent); }
+  .field { display: block; margin-top: 10px; font-size: 11px; letter-spacing: 1px; color: var(--ink-soft); text-transform: uppercase; }
+  .field input, .field select, .field textarea { display: block; width: 100%; margin-top: 4px; padding: 10px; border-radius: 8px; border: 1px solid var(--chassis-edge); background: #fff; color: var(--ink); font: 15px -apple-system, Roboto, sans-serif; text-transform: none; letter-spacing: 0; }
+  .field textarea { min-height: 70px; resize: vertical; }
+  .btnRow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .resultRow { display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 10px 0; border: 0; border-top: 1px solid #e6e2d9; background: transparent; color: var(--ink); font: 13px -apple-system, Roboto, sans-serif; cursor: pointer; }
+  .resultRow:first-child { border-top: 0; }
+  .resultRow .mono { flex: none; font-size: 11px; color: var(--ink-faint); }
+  #sfStatus { font-size: 11px; line-height: 1.6; color: var(--ink-soft); letter-spacing: .5px; }
+  #sfMsg { margin-top: 10px; font-size: 12px; color: var(--accent); min-height: 16px; }
 
   .card { background: var(--panel); border: 1px solid var(--chassis-edge); border-radius: 14px; padding: 12px; margin-top: 12px; box-shadow: inset 0 1px 0 #fff; }
   .cardTitle { font-size: 10px; letter-spacing: 2px; color: var(--ink-faint); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; }
@@ -117,6 +137,19 @@
   .pred:first-child { border-top: 0; }
   .pred span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pred span:last-child { color: var(--ink-faint); font-size: 11px; flex: none; }
+  .keyLabels { display: flex; justify-content: center; gap: 16px; margin-top: 6px; font-size: 9px; letter-spacing: 1.5px; color: var(--ink-faint); }
+  .keyLabels span { width: 56px; text-align: center; }
+  .keyLabels span:nth-child(2) { width: 72px; }
+  .seg { padding: 6px 9px; border-radius: 8px; border: 1px solid var(--chassis-edge); background: var(--key); color: var(--ink); font: 600 10px/1 ui-monospace, Menlo, monospace; letter-spacing: 1px; }
+  .seg.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .reqRow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #e6e2d9; font-size: 13px; }
+  .reqRow:first-child { border-top: 0; }
+  .reqRow img { width: 48px; height: 36px; border-radius: 4px; object-fit: cover; flex: none; background: var(--lcd-edge); }
+  .reqRow .rt { flex: 1; min-width: 0; }
+  .reqRow .rt div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reqRow .rs { font-size: 10px; letter-spacing: 1px; color: var(--ink-faint); }
+  .reqRow .rs.on { color: var(--ok); }
+  .reqRow button { flex: none; }
   #gateStatus { margin-top: 14px; font-size: 12px; color: var(--accent); min-height: 16px; }
 </style>
 </head>
@@ -141,10 +174,60 @@
 <nav id="menu">
   <a href="/">Song Offset Listener</a>
   <a href="/zone" class="here">Zone Director</a>
+  <a href="#" data-sheet="here">This site</a>
+  <a href="#" data-sheet="dir">Site directory</a>
 </nav>
 
+<div id="sheet">
+  <div class="sheetIn">
+    <div class="sheetHead"><b>SITES</b><button class="tabBtn on" id="tabBtnHere">This site</button><button class="tabBtn" id="tabBtnDir">Directory</button><button class="tabBtn" id="sheetClose">Close</button></div>
+
+    <div id="tab_here">
+      <div class="card" style="margin-top:0">
+        <div class="cardTitle"><span>Where am I</span><span></span></div>
+        <div class="mono" id="sfStatus"></div>
+        <div class="btnRow"><button class="sbtn" id="sfGps">Use GPS here</button><button class="sbtn warn" id="sfUnpin" hidden>Back to automatic</button></div>
+      </div>
+      <div class="card">
+        <div class="cardTitle"><span>Find by address or name</span><span></span></div>
+        <div style="display:flex;gap:8px;"><input id="sfSearch" class="mono" placeholder="Starbucks Boulder Hwy" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--chassis-edge);background:#fff;color:var(--ink);font:15px -apple-system,Roboto,sans-serif;"><button class="sbtn" id="sfSearchBtn">Search</button></div>
+        <div id="sfResults" style="margin-top:6px;"></div>
+      </div>
+      <div class="card">
+        <div class="cardTitle"><span>Site details</span><span></span></div>
+        <label class="field">Name<input id="sfName" maxlength="120" placeholder="Coffee shop on Main"></label>
+        <label class="field">Address<input id="sfAddress" maxlength="120"></label>
+        <label class="field">Type<select id="sfKind"></select></label>
+        <label class="field">Music service<select id="sfService"></select></label>
+        <label class="field">Notes<textarea id="sfNotes" maxlength="400" placeholder="Speakers over the counter, volume low after 8pm"></textarea></label>
+        <div class="btnRow"><button class="sbtn go" id="sfSave">Save site</button></div>
+        <div id="sfMsg"></div>
+      </div>
+    </div>
+
+    <div id="tab_dir" hidden>
+      <div class="card" style="margin-top:0">
+        <div class="cardTitle"><span>Saved sites</span><span class="mono" id="dirCount"></span></div>
+        <div style="display:flex;gap:8px;"><input id="dirFilter" placeholder="Filter by name, type, service" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--chassis-edge);background:#fff;color:var(--ink);font:15px -apple-system,Roboto,sans-serif;"><button class="sbtn" id="dirRefresh">Refresh</button></div>
+        <div id="dirList" style="margin-top:6px;"></div>
+      </div>
+    </div>
+
+    <div id="tab_detail" hidden>
+      <div class="card" style="margin-top:0">
+        <div class="cardTitle"><span id="dtTitle">Site</span><span></span></div>
+        <div id="dtInfo"></div>
+        <div class="btnRow"><button class="sbtn" id="dtBack">Back</button><button class="sbtn go" id="dtMakeCurrent">Log here now</button><button class="sbtn" id="dtEdit">Edit</button><button class="sbtn" id="dtCsv">Download history</button><button class="sbtn warn" id="dtRemove">Remove</button></div>
+      </div>
+      <div class="card"><div class="cardTitle"><span>Common sequences</span><span></span></div><div id="dtSeq"></div></div>
+      <div class="card"><div class="cardTitle"><span>Known songs</span><span></span></div><div id="dtCatalog"></div></div>
+      <div class="card"><div class="cardTitle"><span>Play history</span><span></span></div><div id="dtPlays"></div></div>
+    </div>
+  </div>
+</div>
+
 <div class="siteRow mono">
-  <input id="siteName" value="Main Floor" maxlength="28" aria-label="Site name">
+  <button id="siteName" class="unsaved" aria-label="Site setup">Unsaved site</button>
   <span id="clock">--:--</span>
 </div>
 
@@ -163,10 +246,11 @@
 </div>
 
 <div class="transport">
-  <button class="key small" id="prevBtn" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
+  <button class="key small" id="outBtn" aria-label="Output"></button>
   <button class="key big" id="pauseBtn" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg></button>
-  <button class="key small" id="skipBtn" aria-label="Skip"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+  <button class="key small" id="reqBtn" aria-label="Request a song"><svg viewBox="0 0 24 24"><path d="M3 6h12v2H3zm0 4h12v2H3zm0 4h8v2H3zm14-1v-3h2v3h3v2h-3v3h-2v-3h-3v-2z"/></svg></button>
 </div>
+<div class="keyLabels mono"><span id="outLabel">SPEAKER</span><span id="playLabel">PLAY</span><span>REQUEST</span></div>
 <div id="ack" class="mono"></div>
 
 <div class="card">
@@ -179,6 +263,13 @@
 <div class="card">
   <div class="cardTitle"><span>Zones</span><span class="mono">LEVEL</span></div>
   <div id="zones"></div>
+</div>
+
+<div class="card" id="reqCard">
+  <div class="cardTitle"><span>Requests</span><span class="mono" id="reqCount"></span></div>
+  <div style="display:flex;gap:8px;"><input id="reqInput" placeholder="Song or artist" style="flex:1;min-width:0;padding:10px;border-radius:8px;border:1px solid var(--chassis-edge);background:#fff;color:var(--ink);font:15px -apple-system,Roboto,sans-serif;"><button class="sbtn" id="reqSearch">Find</button></div>
+  <div id="reqResults" style="margin-top:6px;"></div>
+  <div id="reqQueue" style="margin-top:6px;"></div>
 </div>
 
 <div class="card">
@@ -196,7 +287,8 @@
   <div class="cardTitle"><span>System</span><span></span></div>
   <div class="toggleRow"><span>Auto follow rotation</span><input type="checkbox" id="followToggle" checked></div>
   <div class="toggleRow"><span>Keep screen awake</span><input type="checkbox" id="wakeToggle" checked></div>
-  <div class="toggleRow"><span>Handset audio</span><span class="mono" id="audioState">LIVE</span></div>
+  <div class="toggleRow"><span>Output</span><span style="display:flex;gap:6px;"><button class="seg" data-out="speaker">SPEAKER</button><button class="seg" data-out="headset">HEADSET</button><button class="seg" data-out="off">NO AUDIO</button></span></div>
+  <div class="toggleRow"><span>Output state</span><span class="mono" id="audioState">STANDBY</span></div>
   <div class="toggleRow"><span>Output delay</span><span style="display:flex;gap:6px;align-items:center;">
     <button class="mono delayKey" data-d="-100">-</button><span class="mono" id="delayVal" style="min-width:64px;text-align:center;">+0 ms</span><button class="mono delayKey" data-d="100">+</button><button class="mono delayKey" data-d="0">RST</button></span></div>
   <div class="toggleRow"><span>Resync now</span><span style="display:flex;gap:8px;align-items:center;"><span class="mono" id="syncState" style="font-size:11px;letter-spacing:1px;color:var(--ink-soft);">IDLE</span><button id="resyncBtn" class="mono" style="padding:6px 12px;border-radius:8px;border:1px solid var(--chassis-edge);background:var(--key);color:var(--ink);">SYNC</button></span></div>
@@ -240,12 +332,6 @@ function sameTitle(a, b) {
   return !!x && !!y && (x.includes(y) || y.includes(x));
 }
 
-const savedSite = (() => { try { return localStorage.getItem('halvard:site'); } catch (e) { return null; } })();
-if (savedSite) $('siteName').value = savedSite;
-$('siteName').addEventListener('change', () => {
-  try { localStorage.setItem('halvard:site', $('siteName').value); } catch (e) {}
-  log('SITE', 'renamed to ' + $('siteName').value.toUpperCase());
-});
 
 $('menuBtn').addEventListener('click', (e) => { e.stopPropagation(); $('menu').classList.toggle('open'); });
 document.addEventListener('click', () => $('menu').classList.remove('open'));
@@ -477,18 +563,13 @@ async function identifyOnce() {
 
   if (current) pushHistory(current);
   scorePrediction(fresh);
+  matchRequests(fresh);
   syncStatus('ALIGNED ' + hhmm());
   current = fresh;
   renderTrack();
   syncAudio(true);
   postVenuePlay(fresh).then(() => fetchVenue(fresh));
-  if (skipQueued) {
-    skipQueued = false;
-    $('skipBtn').classList.remove('armed');
-    log('SKIP', 'complete, now playing ' + fresh.title, 8000);
-  } else {
-    log('CUE', 'loaded "' + fresh.title + '" to all zones');
-  }
+  log('CUE', 'loaded "' + fresh.title + '" to all zones');
   scheduleFromTrack();
 }
 
@@ -545,55 +626,65 @@ tickProgress();
 
 const ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>';
 const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></svg>';
+const ICON_OUT = {
+  speaker: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>',
+  headset: '<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9v7a2 2 0 0 0 2 2h2v-8H5v-1a7 7 0 0 1 14 0v1h-2v8h2a2 2 0 0 0 2-2v-7a9 9 0 0 0-9-9z"/></svg>',
+  off: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.6 3 2.9-2.9-1.4-1.4-2.9 2.9-2.9-2.9-1.4 1.4 2.9 2.9-2.9 2.9 1.4 1.4 2.9-2.9 2.9 2.9 1.4-1.4z"/></svg>'
+};
+const OUT_NAME = { speaker: 'SPEAKER', headset: 'HEADSET', off: 'NO AUDIO' };
 function renderAudioKey() {
   const playing = audioOn && playerState === 1;
   $('pauseBtn').innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
   $('pauseBtn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
-  $('audioState').textContent = playing ? 'LIVE' : (audioOn ? 'ARMED' : 'PAUSED');
-  $('zoneSlot').classList.toggle('on', playerState === 1 || playerState === 3);
+  $('playLabel').textContent = playing ? 'PAUSE' : 'PLAY';
+  $('audioState').textContent = outputMode === 'off' ? 'NO AUDIO' : playing ? 'LIVE ON ' + OUT_NAME[outputMode] : (audioOn ? 'STARTING' : 'STANDBY');
+  $('zoneSlot').classList.toggle('on', audioOn && (playerState === 1 || playerState === 3));
+  $('outBtn').innerHTML = ICON_OUT[outputMode];
+  $('outLabel').textContent = OUT_NAME[outputMode];
+  document.querySelectorAll('.seg[data-out]').forEach(b => b.classList.toggle('on', b.getAttribute('data-out') === outputMode));
+}
+function startPlayback() {
+  ensurePlayer();
+  if (outputMode === 'off') { log('PLAY', 'output is set to no audio, pick speaker or headset'); return; }
+  audioOn = true;
+  if (current && current.videoId && playerReady) {
+    syncAudio(true);
+    log('PLAY', OUT_NAME[outputMode].toLowerCase() + ' output live, locked to ' + current.title);
+  } else {
+    log('PLAY', current ? 'no copy available for this track' : 'output armed, plays as soon as a song is locked');
+  }
+}
+function stopPlayback(msg) {
+  audioOn = false;
+  try { if (player && player.pauseVideo) player.pauseVideo(); } catch (e) {}
+  if (msg) log('PAUSE', msg);
 }
 $('pauseBtn').addEventListener('click', () => {
-  const playing = audioOn && playerState === 1;
-  ensurePlayer();
-  if (playing) {
-    audioOn = false;
-    try { player.pauseVideo(); } catch (e) {}
-    log('PAUSE', 'handset output paused');
-  } else {
-    audioOn = true;
-    if (current && current.videoId && playerReady) {
-      syncAudio(true);
-      log('PLAY', 'handset output live, locked to ' + current.title);
-    } else {
-      log('PLAY', current ? 'no handset copy for this track' : 'handset output armed, waiting for program');
-    }
-  }
+  if (audioOn && playerState === 1) stopPlayback('output paused');
+  else startPlayback();
   renderAudioKey();
 });
-
-$('skipBtn').addEventListener('click', () => {
-  if (!current) { log('SKIP', 'no program loaded'); return; }
-  if (skipQueued) {
-    skipQueued = false;
-    $('skipBtn').classList.remove('armed');
-    log('SKIP', 'cancelled');
-    scheduleFromTrack();
-    return;
-  }
-  skipQueued = true;
-  $('skipBtn').classList.add('armed');
-  scheduleFromTrack();
-});
-
-$('prevBtn').addEventListener('click', () => {
-  if (!current) { log('REPLAY', 'no program loaded'); return; }
-  log('REPLAY', '"' + current.title + '" requested for next open slot', 7000);
+function setOutput(mode) {
+  outputMode = mode;
+  try { localStorage.setItem('halvard:output', mode); } catch (e) {}
+  delayMs = loadDelay();
+  renderDelay();
+  if (mode === 'off') stopPlayback(null);
+  else if (audioOn) syncAudio(true);
+  log('OUTPUT', OUT_NAME[mode].toLowerCase() + (mode === 'off' ? ', handset stays silent' : ', delay ' + (delayMs >= 0 ? '+' : '') + delayMs + ' ms'));
+  renderAudioKey();
+}
+$('outBtn').addEventListener('click', () => setOutput(outputMode === 'speaker' ? 'headset' : outputMode === 'headset' ? 'off' : 'speaker'));
+document.querySelectorAll('.seg[data-out]').forEach(b => b.addEventListener('click', () => setOutput(b.getAttribute('data-out'))));
+$('reqBtn').addEventListener('click', () => {
+  $('reqCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => $('reqInput').focus(), 350);
 });
 
 $('resyncBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   if (!stream) { syncStatus('CONNECT FIRST'); return; }
-  syncAudio(true);
+  if (audioOn && playerState === 1) syncAudio(true);
   if (busy) { pendingResync = true; syncStatus('QUEUED'); return; }
   identify();
 });
@@ -617,7 +708,9 @@ function whenYouTubeReady(cb) {
   document.body.appendChild(tag);
 }
 
-let player = null, playerReady = false, loadedVideo = null, audioOn = true, playerState = -1;
+let player = null, playerReady = false, loadedVideo = null, audioOn = false, playerState = -1;
+let outputMode = (() => { try { const v = localStorage.getItem('halvard:output'); return v === 'headset' || v === 'off' ? v : 'speaker'; } catch (e) { return 'speaker'; } })();
+function loadDelay() { try { return parseInt(localStorage.getItem('halvard:delay:' + outputMode) || localStorage.getItem('halvard:delay') || '0', 10) || 0; } catch (e) { return 0; } }
 setTimeout(renderAudioKey, 0);
 function zoneLog(event, extra) {
   try {
@@ -625,13 +718,13 @@ function zoneLog(event, extra) {
       body: JSON.stringify(Object.assign({ deviceId: deviceId(), event: event, title: current ? current.title : null, videoId: current ? current.videoId : null, position: current ? +position().toFixed(2) : null, nudgeMs: delayMs, playedAtEpochMs: Date.now() }, extra || {})) }).catch(() => {});
   } catch (e) {}
 }
-let delayMs = (() => { try { return parseInt(localStorage.getItem('halvard:delay') || '0', 10) || 0; } catch (e) { return 0; } })();
+let delayMs = loadDelay();
 function renderDelay() { $('delayVal').textContent = (delayMs >= 0 ? '+' : '') + delayMs + ' ms'; }
 renderDelay();
 document.querySelectorAll('.delayKey').forEach(b => b.addEventListener('click', () => {
   const d = parseInt(b.getAttribute('data-d'), 10);
   delayMs = d === 0 ? 0 : delayMs + d;
-  try { localStorage.setItem('halvard:delay', String(delayMs)); } catch (e) {}
+  try { localStorage.setItem('halvard:delay:' + outputMode, String(delayMs)); } catch (e) {}
   renderDelay();
   syncAudio(true);
 }));
@@ -659,7 +752,7 @@ function ensurePlayer() {
 function targetPos() { return position() + delayMs / 1000; }
 function syncAudio(force) {
   if (!playerReady || !player || typeof player.seekTo !== 'function') return;
-  if (!audioOn || !current || !current.videoId) { try { player.pauseVideo(); } catch (e) {} return; }
+  if (!audioOn || outputMode === 'off' || !current || !current.videoId) { try { player.pauseVideo(); } catch (e) {} return; }
   const t = Math.max(0, targetPos());
   if (current.durationSeconds && t > current.durationSeconds + 1) { try { player.pauseVideo(); } catch (e) {} return; }
   try {
@@ -707,18 +800,79 @@ function songKeyOf(title, artist) {
   const n = (s) => (s || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^a-z0-9]/g, '');
   return n(title) + '|' + n(artist);
 }
-function siteNameToSend() {
-  const v = $('siteName').value.trim();
-  return v && v.toLowerCase() !== 'main floor' ? v : null;
+function siteNameToSend() { return null; }
+
+function distM(aLat, aLng, bLat, bLng) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (bLat - aLat) * toR, dLng = (bLng - aLng) * toR;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * toR) * Math.cos(bLat * toR) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
 }
+function fmtDist(m) { if (m === undefined || m === null) return ''; return m < 1000 ? Math.round(m) + ' M' : (m / 1609.34).toFixed(1) + ' MI'; }
+function fmtWhen(at) {
+  if (!at) return '';
+  const d = new Date(at), today = new Date().toDateString() === d.toDateString();
+  return (today ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+let currentSite = null;
+let siteMode = 'gps';
+let directory = [], directoryAt = 0;
+function readPin() { try { return JSON.parse(localStorage.getItem('halvard:pin') || 'null'); } catch (e) { return null; } }
+function writePin(site) {
+  try {
+    if (site) localStorage.setItem('halvard:pin', JSON.stringify({ id: site.id, name: site.name, lat: site.lat, lng: site.lng }));
+    else localStorage.removeItem('halvard:pin');
+  } catch (e) {}
+}
+async function loadDirectory(force) {
+  if (!force && Date.now() - directoryAt < 60000) return directory;
+  const loc = venueLoc;
+  let q = '/api/venue-plays?list=1';
+  if (loc) q += '&lat=' + loc.lat + '&lng=' + loc.lng;
+  try { const d = await (await fetch(q, { cache: 'no-store' })).json(); directory = d.sites || []; directoryAt = Date.now(); } catch (e) {}
+  return directory;
+}
+async function resolveSite() {
+  const loc = await getVenueLoc();
+  const pin = readPin();
+  if (pin) {
+    if (!loc || pin.lat === null || distM(loc.lat, loc.lng, pin.lat, pin.lng) < 600) {
+      siteMode = 'pinned';
+      const fromDir = (await loadDirectory(false)).find(s => s.id === pin.id);
+      currentSite = Object.assign({}, pin, fromDir || {});
+      renderSiteHeader();
+      return currentSite;
+    }
+    writePin(null);
+  }
+  if (loc) {
+    const dir = await loadDirectory(false);
+    const snapRange = Math.max(120, loc.acc || 0);
+    const near = dir.filter(s => s.saved && s.lat !== null).map(s => Object.assign({}, s, { distanceM: distM(loc.lat, loc.lng, s.lat, s.lng) }))
+      .filter(s => s.distanceM <= snapRange).sort((a, b) => a.distanceM - b.distanceM)[0];
+    if (near) { siteMode = 'snapped'; currentSite = near; renderSiteHeader(); return currentSite; }
+  }
+  siteMode = 'gps';
+  currentSite = null;
+  renderSiteHeader();
+  return null;
+}
+function renderSiteHeader() {
+  const name = currentSite && currentSite.name ? currentSite.name : 'Unsaved site';
+  $('siteName').textContent = name;
+  $('siteName').classList.toggle('unsaved', !(currentSite && currentSite.name));
+}
+
 async function postVenuePlay(t) {
   const loc = await getVenueLoc();
-  if (!loc) return;
+  if (!loc && !(currentSite && currentSite.id)) return;
   try {
     await fetch('/api/venue-plays', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lat: loc.lat, lng: loc.lng, title: t.title, artist: t.artist, videoId: t.videoId, durationSeconds: t.durationSeconds, at: Date.now(), deviceId: deviceId(), siteName: siteNameToSend() })
+      body: JSON.stringify({ siteId: currentSite ? currentSite.id : null, lat: loc ? loc.lat : null, lng: loc ? loc.lng : null,
+        title: t.title, artist: t.artist, videoId: t.videoId, durationSeconds: t.durationSeconds, at: Date.now(), deviceId: deviceId() })
     });
   } catch (e) {}
 }
@@ -737,29 +891,28 @@ function scorePrediction(fresh) {
 }
 
 let venueHistoryShown = false;
+let lastVenueId = null;
 async function fetchVenue(t) {
   const loc = await getVenueLoc();
-  if (!loc) { $('siteTag').textContent = 'SITE UNKNOWN, LOCATION OFF'; return; }
-  let q = '/api/venue-plays?lat=' + loc.lat + '&lng=' + loc.lng;
+  await resolveSite();
+  if (!loc && !currentSite) { $('siteTag').textContent = 'SITE UNKNOWN, LOCATION OFF'; return; }
+  let q = '/api/venue-plays?' + (currentSite && currentSite.id ? 'site=' + currentSite.id : 'lat=' + loc.lat + '&lng=' + loc.lng);
   if (t) q += '&title=' + encodeURIComponent(t.title) + '&artist=' + encodeURIComponent(t.artist || '');
   let data;
   try { data = await (await fetch(q, { cache: 'no-store' })).json(); } catch (e) { return; }
   if (!data || data.error) return;
-  $('siteTag').textContent = 'SITE ' + String(data.venue).toUpperCase() + ' / ' + data.catalogSize + ' KNOWN TRACKS' + (loc.acc ? ' / GPS ' + Math.round(loc.acc) + 'M' : '');
-  if (data.name && $('siteName').value.trim().toLowerCase() === 'main floor') $('siteName').value = data.name;
+  lastVenueId = data.venue;
+  const modeText = siteMode === 'pinned' ? 'SET BY HAND' : siteMode === 'snapped' ? 'MATCHED SAVED SITE' : 'GPS CELL, NOT SAVED';
+  $('siteTag').textContent = 'SITE ' + String(data.venue).toUpperCase() + ' / ' + modeText + ' / ' + data.catalogSize + ' KNOWN TRACKS' + (loc && loc.acc ? ' / GPS ' + Math.round(loc.acc) + 'M' : '');
+  if (!currentSite && data.site && data.site.name) { currentSite = data.site; renderSiteHeader(); }
+  $('history').innerHTML = '';
   if (data.plays && data.plays.length) {
     venueHistoryShown = true;
-    $('history').innerHTML = '';
-    data.plays.forEach(h => {
-      const d = new Date(h.at);
-      const sameDay = new Date().toDateString() === d.toDateString();
-      const row = document.createElement('div');
-      row.className = 'hist';
-      row.innerHTML = '<span>' + esc(h.title) + ' <span style="color:var(--ink-faint)">' + esc(h.artist) + '</span></span>' +
-        '<span class="mono">' + (sameDay ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + '</span>';
-      $('history').appendChild(row);
-    });
+    data.plays.forEach(h => $('history').appendChild(histRow(h.title, h.artist, fmtWhen(h.at))));
     $('histCount').textContent = data.plays.length + ' TRACKS HERE';
+  } else {
+    $('history').innerHTML = '<div class="hist"><span style="color:var(--ink-faint)">Nothing logged yet at this site</span><span></span></div>';
+    $('histCount').textContent = '';
   }
   if (t) {
     predicted = data.predictions || [];
@@ -777,6 +930,305 @@ async function fetchVenue(t) {
     }
   }
 }
+function histRow(title, artist, right) {
+  const row = document.createElement('div');
+  row.className = 'hist';
+  row.innerHTML = '<span>' + esc(title) + ' <span style="color:var(--ink-faint)">' + esc(artist || '') + '</span></span><span class="mono">' + esc(right || '') + '</span>';
+  return row;
+}
+
+/* Sites sheet */
+const KINDS = ['', 'Coffee shop', 'Restaurant', 'Fast food', 'Bar', 'Grocery', 'Retail store', 'Mall', 'Gym', 'Salon', 'Hotel', 'Office', 'Other'];
+const SERVICES = ['', 'Unknown', 'Mood Media', 'Stingray', 'PlayNetwork', 'Soundtrack Your Brand', 'Rockbot', 'Streaming app', 'Radio station', 'Live or DJ', 'Other'];
+function fillSelect(id, opts) { $(id).innerHTML = opts.map(o => '<option value="' + esc(o) + '">' + (o ? esc(o) : 'Choose...') + '</option>').join(''); }
+fillSelect('sfKind', KINDS);
+fillSelect('sfService', SERVICES);
+let formCoords = null;
+let detailSite = null;
+
+function openSheet(tab) {
+  $('sheet').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  showTab(tab || 'here');
+}
+function closeSheet() { $('sheet').classList.remove('open'); document.body.style.overflow = ''; }
+function showTab(tab) {
+  ['here', 'dir', 'detail'].forEach(t => { $('tab_' + t).hidden = t !== tab; });
+  $('tabBtnHere').classList.toggle('on', tab === 'here');
+  $('tabBtnDir').classList.toggle('on', tab === 'dir' || tab === 'detail');
+  if (tab === 'here') loadHereForm();
+  if (tab === 'dir') renderDirectory(true);
+}
+$('siteName').addEventListener('click', (e) => { e.stopPropagation(); openSheet('here'); });
+try {
+  if (navigator.permissions) navigator.permissions.query({ name: 'geolocation' }).then(st => { if (st.state === 'granted') resolveSite(); }).catch(() => {});
+} catch (e) {}
+$('sheetClose').addEventListener('click', closeSheet);
+$('tabBtnHere').addEventListener('click', () => showTab('here'));
+$('tabBtnDir').addEventListener('click', () => showTab('dir'));
+document.querySelectorAll('#menu [data-sheet]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); openSheet(a.getAttribute('data-sheet')); }));
+
+function sheetMsg(t) { $('sfMsg').textContent = t; }
+async function loadHereForm() {
+  const loc = await getVenueLoc();
+  await resolveSite();
+  const s = currentSite;
+  $('sfName').value = s && s.name ? s.name : '';
+  $('sfAddress').value = s && s.address ? s.address : '';
+  $('sfKind').value = s && s.kind ? s.kind : '';
+  $('sfService').value = s && s.service ? s.service : '';
+  $('sfNotes').value = s && s.notes ? s.notes : '';
+  formCoords = s && s.lat !== null && s.lat !== undefined ? { lat: s.lat, lng: s.lng, src: 'site' } : (loc ? { lat: loc.lat, lng: loc.lng, src: 'gps' } : null);
+  renderHereStatus();
+  $('sfResults').innerHTML = '';
+}
+function renderHereStatus() {
+  const loc = venueLoc;
+  const lines = [];
+  lines.push('CURRENT: ' + (currentSite && currentSite.name ? currentSite.name.toUpperCase() : 'UNSAVED SITE') + (currentSite && currentSite.id ? ' (' + currentSite.id.toUpperCase() + ')' : (lastVenueId ? ' (' + lastVenueId.toUpperCase() + ')' : '')));
+  lines.push('HOW: ' + (siteMode === 'pinned' ? 'SET BY HAND' : siteMode === 'snapped' ? 'MATCHED A SAVED SITE NEARBY' : 'GPS ONLY, NOT SAVED YET'));
+  lines.push('GPS: ' + (loc ? loc.lat.toFixed(5) + ', ' + loc.lng.toFixed(5) + (loc.acc ? ' WITHIN ' + Math.round(loc.acc) + ' M' : '') : 'OFF'));
+  lines.push('SAVING TO: ' + (formCoords ? formCoords.lat.toFixed(5) + ', ' + formCoords.lng.toFixed(5) + (formCoords.src === 'search' ? ' FROM ADDRESS' : formCoords.src === 'site' ? ' SAVED SPOT' : ' FROM GPS') : 'NO LOCATION YET'));
+  $('sfStatus').innerHTML = lines.map(esc).join('<br>');
+  $('sfUnpin').hidden = siteMode !== 'pinned';
+}
+
+$('sfGps').addEventListener('click', async () => {
+  sheetMsg('reading GPS and looking up this spot...');
+  venueLocAt = 0;
+  const loc = await getVenueLoc();
+  if (!loc) { sheetMsg('location is off for this page, allow location and tap again'); return; }
+  formCoords = { lat: loc.lat, lng: loc.lng, src: 'gps' };
+  renderHereStatus();
+  try {
+    const d = await (await fetch('/api/geocode?lat=' + loc.lat + '&lng=' + loc.lng)).json();
+    if (d.result) {
+      if (!$('sfName').value && d.result.name) $('sfName').value = d.result.name;
+      if (!$('sfAddress').value && d.result.address) $('sfAddress').value = d.result.address;
+      sheetMsg('filled from GPS' + (d.result.name ? ', nearest place is ' + d.result.name : ''));
+    } else sheetMsg('GPS spot set, no address found for it');
+  } catch (e) { sheetMsg('GPS spot set, address lookup failed'); }
+});
+
+async function runSearch() {
+  const q = $('sfSearch').value.trim();
+  if (!q) return;
+  $('sfResults').innerHTML = '<div class="hist"><span style="color:var(--ink-faint)">searching...</span><span></span></div>';
+  let d;
+  const loc = venueLoc;
+  try { d = await (await fetch('/api/geocode?q=' + encodeURIComponent(q) + (loc ? '&lat=' + loc.lat + '&lng=' + loc.lng : ''))).json(); } catch (e) { d = null; }
+  $('sfResults').innerHTML = '';
+  const results = (d && d.results) || [];
+  if (!results.length) { $('sfResults').innerHTML = '<div class="hist"><span style="color:var(--ink-faint)">no matches, try the street address</span><span></span></div>'; return; }
+  results.forEach(r => {
+    const row = document.createElement('button');
+    row.className = 'resultRow';
+    const dist = loc ? fmtDist(distM(loc.lat, loc.lng, r.lat, r.lng)) : '';
+    row.innerHTML = '<span><b>' + esc(r.name || r.address.split(',')[0]) + '</b><br><span style="color:var(--ink-faint)">' + esc(r.address) + '</span></span><span class="mono">' + esc(dist) + '</span>';
+    row.addEventListener('click', () => {
+      if (r.name) $('sfName').value = r.name;
+      $('sfAddress').value = r.address;
+      formCoords = { lat: r.lat, lng: r.lng, src: 'search' };
+      $('sfResults').innerHTML = '';
+      renderHereStatus();
+      sheetMsg('location set from the address, tap Save site');
+    });
+    $('sfResults').appendChild(row);
+  });
+}
+$('sfSearchBtn').addEventListener('click', runSearch);
+$('sfSearch').addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
+
+$('sfSave').addEventListener('click', async () => {
+  const name = $('sfName').value.trim();
+  if (!name) { sheetMsg('give the site a name first'); return; }
+  const editingId = currentSite && currentSite.id && siteMode !== 'gps' ? currentSite.id : null;
+  if (!editingId && !formCoords) { sheetMsg('no location yet, tap Use GPS here or search an address'); return; }
+  const body = { action: 'save', name, address: $('sfAddress').value.trim(), kind: $('sfKind').value, service: $('sfService').value, notes: $('sfNotes').value.trim() };
+  if (editingId) body.siteId = editingId;
+  if (formCoords) { body.lat = formCoords.lat; body.lng = formCoords.lng; }
+  if (!editingId && lastVenueId && formCoords && formCoords.src === 'gps' && siteMode === 'gps') body.siteId = lastVenueId;
+  sheetMsg('saving...');
+  let d;
+  try { d = await (await fetch('/api/venue-plays', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json(); } catch (e) { d = null; }
+  if (!d || !d.ok) { sheetMsg('save failed' + (d && d.error ? ', ' + d.error : '')); return; }
+  const saved = { id: d.site, name, lat: formCoords ? formCoords.lat : currentSite.lat, lng: formCoords ? formCoords.lng : currentSite.lng };
+  writePin(saved);
+  directoryAt = 0;
+  await resolveSite();
+  await fetchVenue(current);
+  renderHereStatus();
+  sheetMsg('saved as ' + name + ', this is now the current site');
+  log('SITE', 'saved ' + name.toUpperCase());
+});
+$('sfUnpin').addEventListener('click', async () => {
+  writePin(null);
+  await resolveSite();
+  await fetchVenue(current);
+  loadHereForm();
+  sheetMsg('back to automatic, the site now follows GPS');
+});
+
+async function renderDirectory(force) {
+  await getVenueLoc();
+  const dir = await loadDirectory(force);
+  const f = $('dirFilter').value.trim().toLowerCase();
+  const list = dir.filter(s => !f || [s.name, s.address, s.kind, s.service, s.id].join(' ').toLowerCase().includes(f));
+  $('dirList').innerHTML = '';
+  $('dirCount').textContent = list.length + ' SITES';
+  if (!list.length) { $('dirList').innerHTML = '<div class="hist"><span style="color:var(--ink-faint)">No sites yet. Save one from This site.</span><span></span></div>'; return; }
+  list.forEach(s => {
+    const row = document.createElement('button');
+    row.className = 'resultRow';
+    const sub = [s.kind, s.service, s.catalogSize + ' tracks', s.plays + ' plays', s.lastAt ? 'heard ' + fmtWhen(s.lastAt) : ''].filter(Boolean).join(' / ');
+    row.innerHTML = '<span><b>' + esc(s.name || 'Unsaved ' + s.id.toUpperCase()) + '</b>' + (currentSite && currentSite.id === s.id ? ' <span class="mono" style="color:var(--ok)">CURRENT</span>' : '') +
+      '<br><span style="color:var(--ink-faint)">' + esc(s.address || '') + (s.address ? '<br>' : '') + esc(sub) + '</span></span><span class="mono">' + esc(fmtDist(s.distanceM)) + '</span>';
+    row.addEventListener('click', () => openDetail(s.id));
+    $('dirList').appendChild(row);
+  });
+}
+$('dirFilter').addEventListener('input', () => renderDirectory(false));
+$('dirRefresh').addEventListener('click', () => renderDirectory(true));
+
+async function openDetail(id) {
+  showTab('detail');
+  $('dtTitle').textContent = 'loading...';
+  ['dtInfo', 'dtPlays', 'dtCatalog', 'dtSeq'].forEach(x => { $(x).innerHTML = ''; });
+  let d;
+  try { d = await (await fetch('/api/venue-plays?site=' + encodeURIComponent(id) + '&full=1', { cache: 'no-store' })).json(); } catch (e) { d = null; }
+  if (!d || d.error) { $('dtTitle').textContent = 'could not load this site'; return; }
+  detailSite = d;
+  const s = d.site;
+  $('dtTitle').textContent = s.name || 'Unsaved ' + s.id.toUpperCase();
+  const info = [
+    ['Address', s.address], ['Type', s.kind], ['Music service', s.service], ['Notes', s.notes],
+    ['Site code', s.id.toUpperCase()], ['Location', s.lat !== null ? s.lat.toFixed(5) + ', ' + s.lng.toFixed(5) : ''],
+    ['Saved', s.createdAt ? new Date(s.createdAt).toLocaleDateString() : 'not saved yet'],
+    ['Known tracks', String(d.catalogSize)], ['Plays logged', String(d.plays.length)]
+  ].filter(x => x[1]);
+  $('dtInfo').innerHTML = info.map(x => '<div class="hist"><span style="color:var(--ink-faint)">' + esc(x[0]) + '</span><span class="mono" style="color:var(--ink);white-space:normal;text-align:right;max-width:60%">' + esc(x[1]) + '</span></div>').join('');
+  d.plays.slice(0, 200).forEach(h => $('dtPlays').appendChild(histRow(h.title, h.artist, fmtWhen(h.at))));
+  if (!d.plays.length) $('dtPlays').innerHTML = '<div class="hist"><span style="color:var(--ink-faint)">No plays logged yet</span><span></span></div>';
+  d.topSongs.forEach(t => $('dtCatalog').appendChild(histRow(t.title || t.key, t.artist, 'x' + t.count)));
+  if (!d.topSongs.length) $('dtCatalog').innerHTML = '<div class="hist"><span style="color:var(--ink-faint)">No songs yet</span><span></span></div>';
+  d.sequences.forEach(q => {
+    const row = document.createElement('div');
+    row.className = 'hist';
+    row.innerHTML = '<span>' + esc(q.from.title) + ' <span style="color:var(--ink-faint)">then</span> ' + esc(q.to.title) + '</span><span class="mono">x' + q.count + '</span>';
+    $('dtSeq').appendChild(row);
+  });
+  if (!d.sequences.length) $('dtSeq').innerHTML = '<div class="hist"><span style="color:var(--ink-faint)">No repeat patterns yet</span><span></span></div>';
+}
+$('dtBack').addEventListener('click', () => showTab('dir'));
+$('dtMakeCurrent').addEventListener('click', async () => {
+  if (!detailSite) return;
+  const s = detailSite.site;
+  writePin({ id: s.id, name: s.name, lat: s.lat, lng: s.lng });
+  await resolveSite();
+  await fetchVenue(current);
+  log('SITE', 'now logging to ' + (s.name || s.id).toUpperCase());
+  showTab('here');
+});
+$('dtEdit').addEventListener('click', async () => {
+  if (!detailSite) return;
+  const s = detailSite.site;
+  writePin({ id: s.id, name: s.name, lat: s.lat, lng: s.lng });
+  await resolveSite();
+  showTab('here');
+});
+$('dtCsv').addEventListener('click', () => {
+  if (!detailSite) return;
+  const s = detailSite.site;
+  const q = (v) => '"' + String(v === null || v === undefined ? '' : v).replace(/"/g, '""') + '"';
+  const rows = [['played_at', 'title', 'artist', 'video_id', 'site', 'site_name', 'address']];
+  detailSite.plays.slice().reverse().forEach(h => rows.push([new Date(h.at).toISOString(), h.title, h.artist, h.videoId || '', s.id, s.name || '', s.address || '']));
+  const blob = new Blob([rows.map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'halvard-site-' + (s.name ? s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : s.id) + '-v1.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+$('dtRemove').addEventListener('click', async () => {
+  if (!detailSite) return;
+  const s = detailSite.site;
+  if (!confirm('Remove ' + (s.name || s.id) + ' from the directory? Its play history stays on the server.')) return;
+  await fetch('/api/venue-plays', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'delete', siteId: s.id }) });
+  const pin = readPin();
+  if (pin && pin.id === s.id) writePin(null);
+  directoryAt = 0;
+  await resolveSite();
+  showTab('dir');
+});
+
+/* Requests */
+let requests = (() => { try { return JSON.parse(localStorage.getItem('halvard:requests') || '[]'); } catch (e) { return []; } })();
+function saveRequests() { try { localStorage.setItem('halvard:requests', JSON.stringify(requests.slice(0, 40))); } catch (e) {} }
+function decodeEntities(t) { const x = document.createElement('textarea'); x.innerHTML = t || ''; return x.value; }
+function cleanTitle(t) { return decodeEntities(t).replace(/\s*[\(\[](official|lyric|audio|video|visualizer|hd|4k|music video)[^\)\]]*[\)\]]/ig, '').trim(); }
+function reqStatus(rq, slot) {
+  if (rq.played) return { t: 'ON AIR ' + fmtWhen(rq.played), on: true };
+  const e = (Date.now() - rq.at) / 1000;
+  if (e < 20) return { t: 'SENDING TO HEADEND' };
+  if (e < 70) return { t: 'MATCHING LICENSED CATALOG' };
+  if (e < 300) return { t: 'QUEUED, ROTATION SLOT ' + (slot + 2) };
+  return { t: 'HOLDING FOR DAYPART WINDOW' };
+}
+function renderRequests() {
+  const box = $('reqQueue');
+  box.innerHTML = '';
+  let slot = 0;
+  requests.forEach((rq, i) => {
+    const st = reqStatus(rq, rq.played ? 0 : slot++);
+    const row = document.createElement('div');
+    row.className = 'reqRow';
+    row.innerHTML = (rq.videoId ? '<img alt="" src="https://i.ytimg.com/vi/' + encodeURIComponent(rq.videoId) + '/default.jpg">' : '') +
+      '<div class="rt"><div>' + esc(rq.title) + '</div><div class="mono rs' + (st.on ? ' on' : '') + '">' + esc(st.t) + '</div></div>';
+    const x = document.createElement('button');
+    x.className = 'seg'; x.textContent = rq.played ? 'CLEAR' : 'CANCEL';
+    x.addEventListener('click', () => { requests.splice(i, 1); saveRequests(); renderRequests(); log('QUEUE', (rq.played ? 'cleared ' : 'cancelled ') + rq.title); });
+    row.appendChild(x);
+    box.appendChild(row);
+  });
+  const pending = requests.filter(r => !r.played).length;
+  $('reqCount').textContent = requests.length ? pending + ' IN QUEUE' : '';
+}
+async function findRequest() {
+  const q = $('reqInput').value.trim();
+  if (!q) return;
+  $('reqResults').innerHTML = '<div class="hist"><span style="color:var(--ink-faint)">searching licensed catalog...</span><span></span></div>';
+  let d = null;
+  try { d = await (await fetch('/api/youtube-search?q=' + encodeURIComponent(q))).json(); } catch (e) {}
+  $('reqResults').innerHTML = '';
+  const results = (d && d.results) || [];
+  if (!results.length) { $('reqResults').innerHTML = '<div class="hist"><span style="color:var(--ink-faint)">no catalog match, try artist and title</span><span></span></div>'; return; }
+  results.slice(0, 6).forEach(r => {
+    const title = cleanTitle(r.title);
+    const row = document.createElement('div');
+    row.className = 'reqRow';
+    row.innerHTML = '<img alt="" src="' + esc(r.thumbnail || '') + '"><div class="rt"><div>' + esc(title) + '</div><div class="mono rs">' + esc(decodeEntities(r.channel || '')) + '</div></div>';
+    const add = document.createElement('button');
+    add.className = 'seg on'; add.textContent = 'ADD';
+    add.addEventListener('click', () => {
+      requests.unshift({ title, channel: decodeEntities(r.channel || ''), videoId: r.videoId, at: Date.now(), site: currentSite ? currentSite.id : lastVenueId, played: null });
+      saveRequests();
+      $('reqResults').innerHTML = '';
+      $('reqInput').value = '';
+      renderRequests();
+      log('QUEUE', 'sent to headend, ' + title, 8000);
+    });
+    row.appendChild(add);
+    $('reqResults').appendChild(row);
+  });
+}
+function matchRequests(fresh) {
+  let hit = null;
+  requests.forEach(rq => { if (!rq.played && sameTitle(rq.title, fresh.title)) { rq.played = Date.now(); hit = rq; } });
+  if (hit) { saveRequests(); renderRequests(); log('QUEUE', 'request on air, ' + fresh.title, 9000); }
+}
+$('reqSearch').addEventListener('click', findRequest);
+$('reqInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') findRequest(); });
+renderRequests();
+setInterval(renderRequests, 5000);
 
 const canvas = $('spectrum');
 const ctx2 = canvas.getContext('2d');
