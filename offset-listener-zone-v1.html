@@ -194,7 +194,7 @@
   <div class="toggleRow"><span>Handset audio</span><span class="mono" id="audioState">LIVE</span></div>
   <div class="toggleRow"><span>Output delay</span><span style="display:flex;gap:6px;align-items:center;">
     <button class="mono delayKey" data-d="-100">-</button><span class="mono" id="delayVal" style="min-width:64px;text-align:center;">+0 ms</span><button class="mono delayKey" data-d="100">+</button><button class="mono delayKey" data-d="0">RST</button></span></div>
-  <div class="toggleRow"><span>Resync now</span><button id="resyncBtn" class="mono" style="padding:6px 12px;border-radius:8px;border:1px solid var(--chassis-edge);background:var(--key);">SYNC</button></div>
+  <div class="toggleRow"><span>Resync now</span><span style="display:flex;gap:8px;align-items:center;"><span class="mono" id="syncState" style="font-size:11px;letter-spacing:1px;color:var(--ink-soft);">IDLE</span><button id="resyncBtn" class="mono" style="padding:6px 12px;border-radius:8px;border:1px solid var(--chassis-edge);background:var(--key);color:var(--ink);">SYNC</button></span></div>
 </div>
 
 <div id="zonePlayer" style="position:fixed;width:1px;height:1px;left:-10px;bottom:0;overflow:hidden;opacity:0;pointer-events:none;"></div>
@@ -383,9 +383,17 @@ function scheduleFromTrack() {
   }
 }
 
+function hhmm() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function syncStatus(t) { $('syncState').textContent = t; }
+let pendingResync = false;
 async function identify() {
+  await identifyOnce();
+  if (pendingResync) { pendingResync = false; await identifyOnce(); }
+}
+async function identifyOnce() {
   if (busy || !stream) return;
   busy = true;
+  syncStatus('LISTENING');
   if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
   setLink('busy', 'SYNCING');
   if (!current) {
@@ -415,6 +423,7 @@ async function identify() {
   $('lcd').classList.remove('syncing');
 
   if (!data || data.error || typeof data.offsetSeconds !== 'number') {
+    syncStatus(current ? 'HELD ' + hhmm() : 'NO SIGNAL');
     if (current) {
       setLink('ok', 'LINKED');
       const dur = current.durationSeconds;
@@ -457,13 +466,14 @@ async function identify() {
     }
     renderTrack();
     syncAudio(true);
-    if (!skipQueued) log('SYNC', 'zone clock aligned');
+    syncStatus('ALIGNED ' + hhmm());
     scheduleFromTrack();
     return;
   }
 
   if (current) pushHistory(current);
   scorePrediction(fresh);
+  syncStatus('ALIGNED ' + hhmm());
   current = fresh;
   renderTrack();
   syncAudio(true);
@@ -568,8 +578,11 @@ $('prevBtn').addEventListener('click', () => {
   log('REPLAY', '"' + current.title + '" requested for next open slot', 7000);
 });
 
-$('resyncBtn').addEventListener('click', () => {
-  log('SYNC', 'manual resync requested', 0);
+$('resyncBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!stream) { syncStatus('CONNECT FIRST'); return; }
+  syncAudio(true);
+  if (busy) { pendingResync = true; syncStatus('QUEUED'); return; }
   identify();
 });
 $('followToggle').addEventListener('change', () => {
