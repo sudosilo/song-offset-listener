@@ -1,9 +1,15 @@
 export const config = { runtime: 'edge' };
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Expose-Headers': 'x-preview-track, x-preview-artist, x-preview-track-ms, x-preview-id, x-preview-score'
+};
+
 function json(body, status) {
   return new Response(JSON.stringify(body), {
     status: status || 200,
-    headers: { 'content-type': 'application/json' }
+    headers: Object.assign({ 'content-type': 'application/json' }, CORS_HEADERS)
   });
 }
 
@@ -15,6 +21,7 @@ function norm(s) {
 }
 
 export default async function handler(request) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
   const params = new URL(request.url).searchParams;
   const title = params.get('title');
   const artist = params.get('artist') || '';
@@ -57,7 +64,7 @@ export default async function handler(request) {
 
   return new Response(audio.body, {
     status: 200,
-    headers: {
+    headers: Object.assign({}, CORS_HEADERS, {
       'content-type': audio.headers.get('content-type') || 'audio/mp4',
       'cache-control': 'public, max-age=86400',
       'x-preview-track': encodeURIComponent(best.trackName || ''),
@@ -65,6 +72,6 @@ export default async function handler(request) {
       'x-preview-track-ms': String(best.trackTimeMillis || ''),
       'x-preview-id': String(best.trackId || ''),
       'x-preview-score': String(scored[0].s)
-    }
+    })
   });
 }

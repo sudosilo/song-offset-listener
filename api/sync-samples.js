@@ -4,10 +4,16 @@ const KEY = 'songsync:syncsamples';
 const MAX_ENTRIES = 1000;
 const MAX_BYTES = 60000;
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'content-type'
+};
+
 function json(body, status) {
   return new Response(JSON.stringify(body), {
     status: status || 200,
-    headers: { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    headers: Object.assign({ 'content-type': 'application/json' }, CORS_HEADERS)
   });
 }
 
@@ -21,6 +27,7 @@ async function redis(base, token, commands) {
 }
 
 export default async function handler(request) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
   const base = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!base || !token) return json({ error: 'redis not configured' }, 500);
