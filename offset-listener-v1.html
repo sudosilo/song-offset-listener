@@ -1626,6 +1626,465 @@ function firePendingFeedEntry() {
 pollFeed();
 setInterval(pollFeed, 3000);
 </script>
+<style>
+  #autoBox { margin-top: 16px; width: 100%; max-width: 420px; border: 2px solid #1a4fa0; border-radius: 10px; padding: 12px; background: #f7faff; }
+  #autoBtn { font-size: 1.05rem; padding: 12px 26px; border-radius: 10px; border: 2px solid #1a4fa0; background: #eaf1fb; color: #1a4fa0; cursor: pointer; }
+  #autoBtn.on { background: #1a4fa0; color: #fff; }
+  #autoStatus { margin-top: 8px; font-size: 0.9rem; color: #444; min-height: 1.2em; }
+  #autoStats { margin-top: 6px; font-size: 0.8rem; color: #888; font-variant-numeric: tabular-nums; }
+</style>
+<script>
+(function () {
+  const RING_SEC = 16;
+  const ID_SEC = 9;
+  const MEASURE_SEC = 6;
+  const HOP = 0.01;
+  const Z_MIN = 6;
+  const PEAK_SEP_FRAMES = 8;
+  const BANDS = [
+    { name: 'lows', type: 'lowpass', f: 200 },
+    { name: 'mids', type: 'bandpass', f: 1000, q: 0.7 },
+    { name: 'highs', type: 'highpass', f: 4000 }
+  ];
+
+  const AP = {
+    on: false, ctx: null, stream: null, node: null, sink: null,
+    ring: null, sr: 0, total: 0, t0cands: [], t0: null, ytLog: [],
+    busy: false, lastIdentifyAt: 0, nextIdentifyGap: 30000, lastMeasureAt: 0,
+    missStreak: 0, flip: false, lastApplied: 0, lastErrBefore: null,
+    lastPairAt: 0, lastGoodAt: 0, songKey: null, previews: {}, wake: null,
+    samples: 0, corrections: 0, lastErrMs: null
+  };
+
+  const box = document.createElement('div');
+  box.id = 'autoBox';
+  box.innerHTML = '<button id="autoBtn">Autopilot off</button>' +
+    '<div id="autoStatus">tap once to let it listen and sync on its own</div>' +
+    '<div id="autoStats"></div>';
+  statusEl.insertAdjacentElement('afterend', box);
+  const autoBtn = document.getElementById('autoBtn');
+  const autoStatus = document.getElementById('autoStatus');
+  const autoStats = document.getElementById('autoStats');
+
+  function say(t) { autoStatus.textContent = t; }
+  function renderStats() {
+    autoStats.textContent = 'samples ' + AP.samples + ', corrections ' + AP.corrections +
+      (AP.lastErrMs !== null ? ', last gap ' + (AP.lastErrMs >= 0 ? '+' : '') + AP.lastErrMs + 'ms' : '') +
+      ', nudge ' + (nudgeMs >= 0 ? '+' : '') + Math.round(nudgeMs) + 'ms';
+  }
+
+  autoBtn.addEventListener('click', () => { if (AP.on) stopAutopilot(); else startAutopilot(); });
+
+  async function startAutopilot() {
+    unlockAudio();
+    try {
+      AP.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+    } catch (err) {
+      say('microphone blocked, allow it and tap again');
+      return;
+    }
+    AP.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (AP.ctx.state === 'suspended') { try { await AP.ctx.resume(); } catch (e) {} }
+    AP.sr = AP.ctx.sampleRate;
+    AP.ring = new Float32Array(Math.round(AP.sr * RING_SEC));
+    AP.total = 0; AP.t0cands = []; AP.t0 = null; AP.ytLog = [];
+    const src = AP.ctx.createMediaStreamSource(AP.stream);
+    AP.node = AP.ctx.createScriptProcessor(4096, 1, 1);
+    AP.sink = AP.ctx.createGain();
+    AP.sink.gain.value = 0;
+    src.connect(AP.node);
+    AP.node.connect(AP.sink);
+    AP.sink.connect(AP.ctx.destination);
+    AP.node.onaudioprocess = onAudio;
+    AP.on = true;
+    autoBtn.textContent = 'Autopilot on';
+    autoBtn.classList.add('on');
+    say('warming up the ear...');
+    requestWake();
+    postSample({ kind: 'autopilot_start' });
+  }
+
+  function stopAutopilot() {
+    AP.on = false;
+    try { AP.node.disconnect(); AP.sink.disconnect(); } catch (e) {}
+    try { AP.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    try { AP.ctx.close(); } catch (e) {}
+    if (AP.wake) { try { AP.wake.release(); } catch (e) {} AP.wake = null; }
+    autoBtn.textContent = 'Autopilot off';
+    autoBtn.classList.remove('on');
+    say('stopped');
+  }
+
+  async function requestWake() {
+    if (!AP.on || !('wakeLock' in navigator)) return;
+    try { AP.wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && AP.on) {
+      requestWake();
+      if (AP.ctx && AP.ctx.state === 'suspended') AP.ctx.resume();
+    }
+  });
+
+  function onAudio(e) {
+    const d = e.inputBuffer.getChannelData(0);
+    const L = AP.ring.length;
+    let w = AP.total % L;
+    for (let i = 0; i < d.length; i++) { AP.ring[w] = d[i]; w++; if (w === L) w = 0; }
+    AP.total += d.length;
+    const at = performance.now();
+    AP.t0cands.push({ at, c: now() - (AP.total / AP.sr) * 1000 });
+    while (AP.t0cands.length && at - AP.t0cands[0].at > 30000) AP.t0cands.shift();
+    let m = Infinity;
+    for (const x of AP.t0cands) if (x.c < m) m = x.c;
+    AP.t0 = m;
+    let yt = null;
+    try { if (syncLive && syncPlayer && !syncPaused) yt = syncPlayer.getCurrentTime(); } catch (err) {}
+    AP.ytLog.push({ w: now(), yt });
+    while (AP.ytLog.length > 120) AP.ytLog.shift();
+  }
+
+  function wallOf(idx) { return AP.t0 + (idx / AP.sr) * 1000; }
+
+  function grab(sec) {
+    const n = Math.min(Math.round(sec * AP.sr), AP.ring.length, AP.total);
+    const out = new Float32Array(n);
+    const L = AP.ring.length;
+    const startIdx = AP.total - n;
+    let r = startIdx % L;
+    for (let i = 0; i < n; i++) { out[i] = AP.ring[r]; r++; if (r === L) r = 0; }
+    return { data: out, startIdx };
+  }
+
+  function ytNear(w) {
+    let best = null;
+    for (const x of AP.ytLog) if (x.yt !== null && (!best || Math.abs(x.w - w) < Math.abs(best.w - w))) best = x;
+    return best;
+  }
+
+  function toWav16k(data, sr) {
+    const rate = 16000;
+    const ratio = sr / rate;
+    const n = Math.floor(data.length / ratio);
+    const pcm = new Int16Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = Math.floor(i * ratio), b = Math.min(data.length, Math.floor((i + 1) * ratio));
+      let s = 0;
+      for (let j = a; j < b; j++) s += data[j];
+      const v = Math.max(-1, Math.min(1, s / Math.max(1, b - a)));
+      pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+    const buf = new ArrayBuffer(44 + pcm.length * 2);
+    const dv = new DataView(buf);
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+    str(0, 'RIFF'); dv.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
+    str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    str(36, 'data'); dv.setUint32(40, pcm.length * 2, true);
+    new Int16Array(buf, 44).set(pcm);
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+
+  async function bandFeatures(data, sr) {
+    const out = [];
+    const hop = Math.round(sr * HOP);
+    for (const b of BANDS) {
+      const off = new OfflineAudioContext(1, data.length, sr);
+      const buf = off.createBuffer(1, data.length, sr);
+      buf.getChannelData(0).set(data);
+      const s = off.createBufferSource();
+      s.buffer = buf;
+      const f = off.createBiquadFilter();
+      f.type = b.type;
+      f.frequency.value = b.f;
+      if (b.q) f.Q.value = b.q;
+      s.connect(f); f.connect(off.destination); s.start(0);
+      const x = (await off.startRendering()).getChannelData(0);
+      const nF = Math.floor(x.length / hop);
+      const env = new Float32Array(nF);
+      for (let i = 0; i < nF; i++) {
+        let sum = 0;
+        for (let j = i * hop; j < (i + 1) * hop; j++) sum += x[j] * x[j];
+        env[i] = Math.log(1e-7 + Math.sqrt(sum / hop));
+      }
+      const on = new Float32Array(nF);
+      for (let i = 1; i < nF; i++) on[i] = Math.max(0, env[i] - env[i - 1]);
+      let mean = 0; for (let i = 0; i < nF; i++) mean += on[i]; mean /= Math.max(1, nF);
+      let v = 0; for (let i = 0; i < nF; i++) v += (on[i] - mean) * (on[i] - mean);
+      const sd = Math.sqrt(v / Math.max(1, nF)) || 1;
+      for (let i = 0; i < nF; i++) on[i] = (on[i] - mean) / sd;
+      out.push({ name: b.name, env, on });
+    }
+    return out;
+  }
+
+  function xcorr(mic, ref) {
+    const M = mic[0].on.length, N = ref[0].on.length;
+    const minOverlap = Math.floor(M * 0.6);
+    const kMin = -(M - minOverlap), kMax = N - minOverlap;
+    const len = kMax - kMin + 1;
+    const c = new Float32Array(len);
+    for (let k = kMin; k <= kMax; k++) {
+      const i0 = Math.max(0, -k), i1 = Math.min(M, N - k);
+      let s = 0;
+      for (let b = 0; b < mic.length; b++) {
+        const a = mic[b].on, r = ref[b].on;
+        for (let i = i0; i < i1; i++) s += a[i] * r[i + k];
+      }
+      c[k - kMin] = s / Math.max(1, (i1 - i0) * mic.length);
+    }
+    const sorted = Array.from(c).sort((x, y) => x - y);
+    const med = sorted[Math.floor(len / 2)];
+    const dev = sorted.map(x => Math.abs(x - med)).sort((x, y) => x - y);
+    const mad = dev[Math.floor(len / 2)] * 1.4826 + 1e-9;
+    const peaks = [];
+    for (let i = 1; i < len - 1; i++) {
+      if (c[i] > c[i - 1] && c[i] >= c[i + 1]) {
+        const den = c[i - 1] - 2 * c[i] + c[i + 1];
+        const d = den !== 0 ? 0.5 * (c[i - 1] - c[i + 1]) / den : 0;
+        peaks.push({ k: i + kMin + d, z: (c[i] - med) / mad });
+      }
+    }
+    peaks.sort((a, b) => b.z - a.z);
+    const picked = [];
+    for (const p of peaks) {
+      if (picked.length >= 5) break;
+      if (picked.every(q => Math.abs(q.k - p.k) >= PEAK_SEP_FRAMES)) picked.push(p);
+    }
+    return picked.map(p => ({ sec: +(p.k * HOP).toFixed(4), z: +p.z.toFixed(2) }));
+  }
+
+  function compactEnv(features) {
+    const o = {};
+    for (const f of features) {
+      const e = f.env;
+      let lo = Infinity, hi = -Infinity;
+      for (let i = 0; i < e.length; i++) { if (e[i] < lo) lo = e[i]; if (e[i] > hi) hi = e[i]; }
+      let s = '';
+      for (let i = 0; i + 1 < e.length; i += 2) {
+        const v = (e[i] + e[i + 1]) / 2;
+        s += Math.max(0, Math.min(35, Math.round(((v - lo) / ((hi - lo) || 1)) * 35))).toString(36);
+      }
+      o[f.name] = s;
+    }
+    return o;
+  }
+
+  async function getPreview(title, artist) {
+    const key = (title + '|' + artist).toLowerCase();
+    const hit = AP.previews[key];
+    if (hit && (hit.ok || Date.now() - hit.at < 300000)) return hit.ok ? hit : null;
+    const rec = { ok: false, at: Date.now() };
+    AP.previews[key] = rec;
+    try {
+      const res = await fetch('/api/preview?title=' + encodeURIComponent(title) + '&artist=' + encodeURIComponent(artist || ''));
+      if (!res.ok) return null;
+      const score = parseInt(res.headers.get('x-preview-score') || '0', 10);
+      const raw = await res.arrayBuffer();
+      if (score < 3) { rec.reason = 'weak catalog match'; return null; }
+      const audio = await AP.ctx.decodeAudioData(raw);
+      const ch = audio.getChannelData(0);
+      let mono = ch;
+      if (audio.numberOfChannels > 1) {
+        const r = audio.getChannelData(1);
+        mono = new Float32Array(ch.length);
+        for (let i = 0; i < ch.length; i++) mono[i] = (ch[i] + r[i]) / 2;
+      }
+      rec.features = await bandFeatures(mono, audio.sampleRate);
+      rec.meta = {
+        track: decodeURIComponent(res.headers.get('x-preview-track') || ''),
+        artist: decodeURIComponent(res.headers.get('x-preview-artist') || ''),
+        id: res.headers.get('x-preview-id') || '',
+        trackMs: parseInt(res.headers.get('x-preview-track-ms') || '0', 10) || null,
+        seconds: +(audio.duration).toFixed(2),
+        score
+      };
+      rec.ok = true;
+      return rec;
+    } catch (err) {
+      rec.reason = String(err && err.message || err);
+      return null;
+    }
+  }
+
+  function postSample(obj) {
+    AP.samples++;
+    renderStats();
+    let lat = {};
+    try { lat = { baseLatency: AP.ctx ? AP.ctx.baseLatency : null, outputLatency: AP.ctx ? AP.ctx.outputLatency : null }; } catch (e) {}
+    const body = Object.assign({
+      deviceId,
+      wall: Math.round(now()),
+      clockOffsetMs: Math.round(clockOffsetMs),
+      sr: AP.sr,
+      nudgeMs: Math.round(nudgeMs),
+      syncLive,
+      title: lastMatch ? lastMatch.title : null,
+      artist: lastMatch ? lastMatch.artist : null,
+      videoId: lastMatch ? lastMatch.videoId : null,
+      ua: navigator.userAgent.slice(0, 120)
+    }, lat, obj);
+    fetch('/api/sync-samples', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    }).catch(() => {});
+  }
+
+  async function autoIdentify() {
+    AP.lastIdentifyAt = Date.now();
+    say('listening to the room...');
+    const clip = grab(ID_SEC);
+    const capturedAt = wallOf(clip.startIdx);
+    const clipMs = Math.round((clip.data.length / AP.sr) * 1000);
+    const wav = toWav16k(clip.data, AP.sr);
+    let data = null;
+    awaitingOwnRecognition = true;
+    try {
+      const form = new FormData();
+      form.append('audio', wav, 'clip.wav');
+      form.append('capturedAt', String(Math.round(capturedAt)));
+      form.append('clipDurationMs', String(clipMs));
+      const loc = await getMyLocation();
+      if (loc) { form.append('lat', String(loc.lat)); form.append('lng', String(loc.lng)); }
+      const bpm = await detectBpmFromBlob(wav);
+      if (bpm) form.append('localBpm', String(bpm));
+      const res = await fetch('/api/recognize', { method: 'POST', body: form });
+      data = await res.json();
+    } catch (err) {
+      data = { error: 'request failed' };
+    }
+
+    if (!data || data.error) {
+      awaitingOwnRecognition = false;
+      AP.nextIdentifyGap = Math.min(120000, AP.nextIdentifyGap * 1.5);
+      say('no song recognized, listening again soon');
+      postSample({ kind: 'identify_miss', capturedAt: Math.round(capturedAt), clipMs, error: data && data.error });
+      return;
+    }
+
+    const key = (data.title + '|' + data.artist).toLowerCase();
+    const sameSong = AP.songKey === key && syncLive;
+    const trusted = sameSong && Date.now() - AP.lastGoodAt < 90000;
+    if (!sameSong) {
+      AP.songKey = key; AP.flip = false; AP.lastApplied = 0; AP.lastErrBefore = null;
+      AP.missStreak = 0; AP.lastPairAt = 0; AP.lastGoodAt = 0; AP.lastErrMs = null;
+    }
+    if (!trusted) activateMatch(data, true);
+    awaitingOwnRecognition = false;
+    AP.nextIdentifyGap = data.videoId ? 30000 : 120000;
+    AP.lastMeasureAt = Date.now() - 6000;
+    say(data.title + ', ' + (!data.videoId ? 'no playable copy found' : (trusted ? 'still locked' : 'syncing')));
+    postSample({
+      kind: 'identify', capturedAt: Math.round(capturedAt), clipMs,
+      auddTitle: data.title, auddArtist: data.artist, auddOffset: data.offsetSeconds,
+      auddTimecode: data.raw ? data.raw.timecode : null, epochMs: data.epochMs,
+      videoIdReturned: data.videoId, durationSeconds: data.videoDurationSeconds,
+      bpm: data.bpm, sameSong, trusted
+    });
+  }
+
+  async function measure() {
+    AP.lastMeasureAt = Date.now();
+    const pv = await getPreview(lastMatch.title, lastMatch.artist);
+    const clip = grab(MEASURE_SEC);
+    const w0 = wallOf(clip.startIdx);
+    const yt = ytNear(w0);
+    const base = {
+      kind: 'measure', clipStart: Math.round(w0),
+      ytAtClip: yt ? +(yt.yt - (yt.w - w0) / 1000).toFixed(3) : null,
+      intendedAtClip: +(currentIntendedPosition() - (now() - w0) / 1000).toFixed(3)
+    };
+    if (!pv) {
+      postSample(Object.assign(base, { result: 'no_reference' }));
+      say(lastMatch.title + ', no reference copy found for fine sync');
+      return;
+    }
+    const mic = await bandFeatures(clip.data, AP.sr);
+    const peaks = xcorr(mic, pv.features);
+    const strong = peaks.filter(p => p.z >= Z_MIN);
+    const sample = Object.assign(base, { preview: pv.meta, peaks, micEnv: compactEnv(mic) });
+
+    if (strong.length === 0) {
+      AP.missStreak++;
+      sample.result = 'none';
+      say(lastMatch.title + ', outside the reference window, waiting');
+    } else if (strong.length === 1) {
+      AP.missStreak = 0;
+      sample.result = 'single';
+      if (AP.lastPairAt && Date.now() - AP.lastPairAt < 120000) {
+        AP.lastGoodAt = Date.now();
+        sample.locked = true;
+        say(lastMatch.title + ', locked');
+      } else {
+        say(lastMatch.title + ', hearing one copy only');
+      }
+    } else {
+      AP.missStreak = 0;
+      const louder = strong[0], other = strong[1];
+      const own = AP.flip ? other : louder;
+      const room = AP.flip ? louder : other;
+      const err = own.sec - room.sec;
+      sample.result = 'pair';
+      sample.errSec = +err.toFixed(4);
+      sample.flip = AP.flip;
+
+      if (AP.lastApplied !== 0 && AP.lastErrBefore !== null && Math.abs(err) > AP.lastErrBefore * 1.3 && Math.abs(err) > 0.08) {
+        AP.flip = !AP.flip;
+        setNudge(nudgeMs - AP.lastApplied);
+        sample.action = 'flip_and_undo';
+        sample.undoMs = Math.round(-AP.lastApplied);
+        AP.lastApplied = 0;
+        AP.lastErrBefore = null;
+        say(lastMatch.title + ', swapped which copy is mine, retrying');
+      } else if (Math.abs(err) > 0.03) {
+        const delta = Math.max(-4000, Math.min(4000, -err * 1000 * 0.9));
+        AP.lastErrBefore = Math.abs(err);
+        AP.lastApplied = delta;
+        setNudge(nudgeMs + delta);
+        AP.corrections++;
+        sample.action = 'correct';
+        sample.appliedMs = Math.round(delta);
+        say(lastMatch.title + ', corrected ' + (delta >= 0 ? '+' : '') + Math.round(delta) + 'ms');
+      } else {
+        AP.lastApplied = 0;
+        AP.lastErrBefore = Math.abs(err);
+        sample.action = 'hold';
+        say(lastMatch.title + ', locked within ' + Math.round(Math.abs(err) * 1000) + 'ms');
+      }
+      AP.lastErrMs = Math.round(err * 1000);
+      AP.lastPairAt = AP.lastGoodAt = Date.now();
+    }
+    if (AP.missStreak >= 4) { AP.lastIdentifyAt = 0; AP.missStreak = 0; }
+    postSample(sample);
+  }
+
+  setInterval(async () => {
+    if (!AP.on || AP.busy || AP.t0 === null) return;
+    if (AP.total < ID_SEC * AP.sr) { say('warming up the ear...'); return; }
+    const t = Date.now();
+    AP.busy = true;
+    try {
+      if (!syncLive || !lastMatch) {
+        if (t - AP.lastIdentifyAt > AP.nextIdentifyGap || AP.lastIdentifyAt === 0) await autoIdentify();
+        return;
+      }
+      const dur = lastMatch.videoDurationSeconds;
+      const pos = currentIntendedPosition();
+      const songOver = typeof dur === 'number' && dur > 0 && pos > dur + 2 && t - AP.lastIdentifyAt > 15000;
+      if (AP.lastIdentifyAt === 0 || songOver || t - AP.lastIdentifyAt > 180000) { await autoIdentify(); return; }
+      if (t - AP.lastMeasureAt > 12000) await measure();
+    } catch (err) {
+      postSample({ kind: 'autopilot_error', error: String(err && err.message || err) });
+    } finally {
+      AP.busy = false;
+      renderStats();
+    }
+  }, 1000);
+})();
+</script>
   <!-- =====================================================================
        MOHAVE TECHNOLOGY GROUP // CREATOR SEAL
        Drop this ONE block into any HTML page, anywhere before </body>.
