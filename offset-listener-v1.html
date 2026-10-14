@@ -1411,7 +1411,7 @@ function renderPositions(devices) {
     if (isMe) row.style.cursor = 'default';
     const nameColor = isMe ? '#333' : '#1a4fa0';
     row.innerHTML = '<div style="color:' + nameColor + ';font-weight:bold;">' + escapeHtml(d.deviceId) + (isMe ? ' (this phone)' : '') + '</div>' +
-      '<div class="fa">' + escapeHtml(d.title || '') + (d.paused ? ' — paused' : '') + '</div>' +
+      '<div class="fa">' + escapeHtml(d.title || '') + (d.paused ? ', paused' : '') + '</div>' +
       '<div class="fs">' + formatOffset(d.position || 0) + ' · updated ' + staleSec + 's ago · nudge ' +
       (d.nudgeMs >= 0 ? '+' : '') + (d.nudgeMs / 1000).toFixed(1) + 's</div>';
     if (!isMe && d.videoId) {
@@ -1594,7 +1594,7 @@ function firePendingFeedEntry() {
   const e = pendingFeedEntry;
   const elapsedSinceHeard = Math.max(0, (Date.now() - e.epochMs) / 1000);
   const position = (e.offsetSeconds || 0) + elapsedSinceHeard;
-  feedPlayerStatus.textContent = 'playing: ' + e.title + ' — ' + e.artist;
+  feedPlayerStatus.textContent = 'playing: ' + e.title + ' by ' + e.artist;
   feedPlayer.loadVideoById(e.videoId, Math.max(position, 0));
   feedPauseBtn.style.display = 'inline-block';
   feedPaused = false;

@@ -48,6 +48,13 @@ export default async function handler(request) {
     });
   }
 
+  if (typeof body.lat !== 'number' || typeof body.lng !== 'number') {
+    return new Response(JSON.stringify({ error: 'missing lat or lng, anchors are region based so a seed needs a location' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' }
+    });
+  }
+
   const epochMs = Date.now();
   const ok = await writeAnchor({
     title: entry.title,
@@ -55,7 +62,9 @@ export default async function handler(request) {
     offsetSeconds,
     epochMs,
     videoId: entry.videoId,
-    videoDurationSeconds: entry.durationSeconds
+    videoDurationSeconds: entry.durationSeconds,
+    lat: body.lat,
+    lng: body.lng
   });
 
   if (!ok) {
@@ -70,6 +79,8 @@ export default async function handler(request) {
     artist: entry.artist,
     videoId: entry.videoId,
     offsetSeconds,
+    lat: body.lat,
+    lng: body.lng,
     epochMs
   });
 

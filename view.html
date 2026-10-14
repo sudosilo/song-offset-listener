@@ -379,7 +379,7 @@ function renderPositions(devices) {
     const row = document.createElement('div');
     row.className = 'feedItem';
     row.innerHTML = '<div class="ft">' + escapeHtml(d.deviceId) + (isMe ? ' (this phone)' : '') + '</div>' +
-      '<div class="fa">' + escapeHtml(d.title || '') + (d.paused ? ' — paused' : '') + '</div>' +
+      '<div class="fa">' + escapeHtml(d.title || '') + (d.paused ? ', paused' : '') + '</div>' +
       '<div class="fs">' + formatOffset(d.position || 0) + ' · updated ' + staleSec + 's ago · nudge ' +
       (d.nudgeMs >= 0 ? '+' : '') + (d.nudgeMs / 1000).toFixed(1) + 's</div>';
     positionsList.appendChild(row);
