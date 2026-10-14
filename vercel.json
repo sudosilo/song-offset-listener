@@ -1,5 +1,6 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/offset-listener-v1.html" }
+    { "source": "/", "destination": "/offset-listener-v1.html" },
+    { "source": "/zone", "destination": "/offset-listener-zone-v1.html" }
   ]
 }

@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#e9e6df">
+<title>Halvard Zone Director</title>
+<style>
+  :root {
+    --chassis: #e9e6df;
+    --chassis-edge: #cfcac0;
+    --panel: #f6f4ef;
+    --ink: #22252a;
+    --ink-soft: #5d6168;
+    --ink-faint: #8b8f96;
+    --lcd: #dfe8cf;
+    --lcd-edge: #b8c4a3;
+    --lcd-ink: #26321a;
+    --lcd-dim: #6f7d5c;
+    --accent: #c4561f;
+    --ok: #2f8a4a;
+    --warn: #b7791f;
+    --key: #fbfaf7;
+    --key-shadow: #bdb7ab;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--chassis); color: var(--ink); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    padding: 14px 14px 40px;
+    max-width: 480px;
+    margin: 0 auto;
+    user-select: none;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace; }
+
+  header { display: flex; align-items: center; gap: 10px; }
+  .logo { width: 34px; height: 34px; border-radius: 8px; background: var(--ink); display: grid; place-items: center; flex: none; }
+  .brand { line-height: 1.1; flex: 1; min-width: 0; }
+  .brand b { display: block; font-size: 15px; letter-spacing: 3px; }
+  .brand span { font-size: 11px; color: var(--ink-soft); letter-spacing: 1px; text-transform: uppercase; }
+  .pill { font-size: 10px; letter-spacing: 1px; padding: 5px 8px; border-radius: 20px; background: var(--panel); border: 1px solid var(--chassis-edge); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-faint); }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(47,138,74,.18); }
+  .dot.busy { background: var(--warn); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  #menuBtn { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--chassis-edge); background: var(--panel); display: grid; place-items: center; padding: 0; }
+  #menuBtn i { display: block; width: 14px; height: 2px; background: var(--ink-soft); margin: 2px 0; }
+  #menu { position: absolute; right: 14px; top: 56px; background: var(--key); border: 1px solid var(--chassis-edge); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.12); display: none; z-index: 20; min-width: 180px; overflow: hidden; }
+  #menu.open { display: block; }
+  #menu a { display: block; padding: 12px 14px; color: var(--ink); text-decoration: none; font-size: 14px; border-bottom: 1px solid var(--chassis); }
+  #menu a:last-child { border-bottom: 0; }
+  #menu a.here { color: var(--accent); }
+
+  .siteRow { display: flex; align-items: center; justify-content: space-between; margin: 14px 2px 8px; font-size: 11px; letter-spacing: 1px; color: var(--ink-soft); text-transform: uppercase; }
+  #siteName { font: inherit; color: var(--ink); background: transparent; border: 0; border-bottom: 1px dashed var(--chassis-edge); padding: 2px 0; width: 60%; text-transform: uppercase; letter-spacing: 1px; outline: none; }
+
+  .card { background: var(--panel); border: 1px solid var(--chassis-edge); border-radius: 14px; padding: 12px; margin-top: 12px; box-shadow: inset 0 1px 0 #fff; }
+  .cardTitle { font-size: 10px; letter-spacing: 2px; color: var(--ink-faint); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; }
+
+  .lcd { background: var(--lcd); border: 2px solid var(--lcd-edge); border-radius: 10px; padding: 12px; color: var(--lcd-ink); box-shadow: inset 0 2px 6px rgba(0,0,0,.08); }
+  .lcdTop { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 1.5px; color: var(--lcd-dim); }
+  .nowRow { display: flex; gap: 12px; margin-top: 10px; align-items: center; }
+  .art { width: 78px; height: 78px; border-radius: 6px; background: var(--lcd-edge); flex: none; overflow: hidden; display: grid; place-items: center; }
+  .art img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.85) contrast(1.02); }
+  .nowText { min-width: 0; flex: 1; }
+  .title { font-size: 19px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .artist { font-size: 14px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { font-size: 11px; color: var(--lcd-dim); margin-top: 6px; letter-spacing: .5px; }
+  .bar { height: 6px; background: rgba(38,50,26,.15); border-radius: 3px; margin-top: 12px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0%; background: var(--lcd-ink); border-radius: 3px; transition: width .25s linear; }
+  .times { display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px; }
+  .syncing .title::after { content: ""; display: inline-block; width: 8px; height: 15px; background: var(--lcd-ink); margin-left: 4px; vertical-align: -2px; animation: blink .8s infinite; }
+
+  .transport { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 14px; }
+  .key { background: var(--key); border: 1px solid var(--chassis-edge); border-radius: 50%; box-shadow: 0 3px 0 var(--key-shadow); display: grid; place-items: center; padding: 0; color: var(--ink); }
+  .key:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--key-shadow); }
+  .key.small { width: 56px; height: 56px; }
+  .key.big { width: 72px; height: 72px; }
+  .key svg { width: 24px; height: 24px; fill: currentColor; }
+  .key.big svg { width: 30px; height: 30px; }
+  .key.armed { color: var(--accent); border-color: var(--accent); }
+
+  #ack { margin-top: 12px; font-size: 12px; color: var(--ink-soft); min-height: 34px; line-height: 1.45; }
+  #ack .cmd { color: var(--accent); }
+
+  #spectrum { width: 100%; height: 70px; display: block; }
+  .vu { display: grid; grid-template-columns: 16px 1fr 42px; gap: 8px; align-items: center; font-size: 11px; color: var(--ink-soft); margin-top: 6px; }
+  .vuTrack { height: 8px; border-radius: 4px; background: #e3e0d8; overflow: hidden; }
+  .vuFill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--ok) 0%, var(--ok) 65%, var(--warn) 82%, var(--accent) 100%); }
+
+  .zone { display: grid; grid-template-columns: 10px 1fr 110px 46px; gap: 8px; align-items: center; padding: 9px 0; border-top: 1px solid #e6e2d9; font-size: 13px; }
+  .zone:first-of-type { border-top: 0; }
+  .zone input[type=range] { width: 100%; accent-color: var(--ink); }
+  .zone .db { font-size: 11px; color: var(--ink-soft); text-align: right; }
+
+  .hist { font-size: 13px; padding: 8px 0; border-top: 1px solid #e6e2d9; display: flex; justify-content: space-between; gap: 10px; }
+  .hist:first-child { border-top: 0; }
+  .hist span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist span:last-child { color: var(--ink-faint); font-size: 11px; flex: none; }
+
+  .toggleRow { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 4px 0; }
+
+  #gate { position: fixed; inset: 0; background: var(--chassis); z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; text-align: center; }
+  #gate.hidden { display: none; }
+  #gate h2 { font-size: 13px; letter-spacing: 3px; color: var(--ink-soft); font-weight: 600; margin: 18px 0 6px; }
+  #gate p { font-size: 14px; color: var(--ink-soft); max-width: 280px; line-height: 1.5; }
+  #connectBtn { margin-top: 22px; padding: 16px 34px; font-size: 16px; border-radius: 12px; border: 0; background: var(--ink); color: #fff; letter-spacing: 1px; }
+  #gateStatus { margin-top: 14px; font-size: 12px; color: var(--accent); min-height: 16px; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="logo" style="width:56px;height:56px;border-radius:14px;">
+    <svg width="30" height="30" viewBox="0 0 24 24"><path d="M3 12h2v5H3zm4-4h2v13H7zm4-5h2v18h-2zm4 6h2v9h-2zm4 3h2v5h-2z" fill="#fff"/></svg>
+  </div>
+  <h2>HALVARD ZONE DIRECTOR</h2>
+  <p>Pair this handset with the in-store audio system to take control of the current zone.</p>
+  <button id="connectBtn">Connect to Zone</button>
+  <div id="gateStatus"></div>
+</div>
+
+<header>
+  <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M3 12h2v5H3zm4-4h2v13H7zm4-5h2v18h-2zm4 6h2v9h-2zm4 3h2v5h-2z" fill="#fff"/></svg></div>
+  <div class="brand"><b>HALVARD</b><span>Zone Director</span></div>
+  <div class="pill mono"><span class="dot" id="linkDot"></span><span id="linkText">OFFLINE</span></div>
+  <button id="menuBtn" aria-label="Menu"><i></i><i></i><i></i></button>
+</header>
+<nav id="menu">
+  <a href="/">Song Offset Listener</a>
+  <a href="/zone" class="here">Zone Director</a>
+</nav>
+
+<div class="siteRow mono">
+  <input id="siteName" value="Main Floor" maxlength="28" aria-label="Site name">
+  <span id="clock">--:--</span>
+</div>
+
+<div class="lcd mono" id="lcd">
+  <div class="lcdTop"><span>NOW PLAYING</span><span id="zoneTag">ALL ZONES</span></div>
+  <div class="nowRow">
+    <div class="art" id="art"><svg width="28" height="28" viewBox="0 0 24 24"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3z" fill="#6f7d5c"/></svg></div>
+    <div class="nowText">
+      <div class="title" id="title">Standby</div>
+      <div class="artist" id="artist">Waiting for feed</div>
+      <div class="meta" id="meta">LICENSED BGM STREAM</div>
+    </div>
+  </div>
+  <div class="bar"><div id="progress"></div></div>
+  <div class="times"><span id="elapsed">0:00</span><span id="remaining">-0:00</span></div>
+</div>
+
+<div class="transport">
+  <button class="key small" id="prevBtn" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
+  <button class="key big" id="pauseBtn" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg></button>
+  <button class="key small" id="skipBtn" aria-label="Skip"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+</div>
+<div id="ack" class="mono"></div>
+
+<div class="card">
+  <div class="cardTitle"><span>Output monitor</span><span class="mono" id="bpmTag"></span></div>
+  <canvas id="spectrum"></canvas>
+  <div class="vu mono"><span>L</span><div class="vuTrack"><div class="vuFill" id="vuL"></div></div><span id="vuLdb">-inf</span></div>
+  <div class="vu mono"><span>R</span><div class="vuTrack"><div class="vuFill" id="vuR"></div></div><span id="vuRdb">-inf</span></div>
+</div>
+
+<div class="card">
+  <div class="cardTitle"><span>Zones</span><span class="mono">LEVEL</span></div>
+  <div id="zones"></div>
+</div>
+
+<div class="card">
+  <div class="cardTitle"><span>Play history</span><span class="mono" id="histCount"></span></div>
+  <div id="history"><div class="hist"><span style="color:var(--ink-faint)">Nothing logged yet this shift</span><span></span></div></div>
+</div>
+
+<div class="card">
+  <div class="cardTitle"><span>System</span><span></span></div>
+  <div class="toggleRow"><span>Auto follow rotation</span><input type="checkbox" id="followToggle" checked></div>
+  <div class="toggleRow"><span>Keep screen awake</span><input type="checkbox" id="wakeToggle" checked></div>
+  <div class="toggleRow"><span>Resync now</span><button id="resyncBtn" class="mono" style="padding:6px 12px;border-radius:8px;border:1px solid var(--chassis-edge);background:var(--key);">SYNC</button></div>
+</div>
+
+<script>
+const CLIP_MS = 9000;
+const $ = (id) => document.getElementById(id);
+
+let clockOffsetMs = 0;
+let calibrated = false;
+async function calibrateClock() {
+  const samples = [];
+  for (let i = 0; i < 5; i++) {
+    const t0 = Date.now();
+    try {
+      const res = await fetch('/api/time', { cache: 'no-store' });
+      const data = await res.json();
+      const t1 = Date.now();
+      samples.push({ offset: (data.serverTime + (t1 - t0) / 2) - t1, rtt: t1 - t0 });
+    } catch (err) {}
+  }
+  if (!samples.length) return;
+  samples.sort((a, b) => a.rtt - b.rtt);
+  if (!calibrated) { clockOffsetMs = samples[0].offset; calibrated = true; }
+  else clockOffsetMs += (samples[0].offset - clockOffsetMs) * 0.5;
+}
+function now() { return Date.now() + clockOffsetMs; }
+calibrateClock();
+setInterval(calibrateClock, 75000);
+
+function fmt(sec) {
+  if (sec === null || sec === undefined || !isFinite(sec)) return '--:--';
+  sec = Math.max(0, Math.floor(sec));
+  return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function sameTitle(a, b) {
+  const n = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const x = n(a), y = n(b);
+  return !!x && !!y && (x.includes(y) || y.includes(x));
+}
+
+const savedSite = (() => { try { return localStorage.getItem('halvard:site'); } catch (e) { return null; } })();
+if (savedSite) $('siteName').value = savedSite;
+$('siteName').addEventListener('change', () => {
+  try { localStorage.setItem('halvard:site', $('siteName').value); } catch (e) {}
+  log('SITE', 'renamed to ' + $('siteName').value.toUpperCase());
+});
+
+$('menuBtn').addEventListener('click', (e) => { e.stopPropagation(); $('menu').classList.toggle('open'); });
+document.addEventListener('click', () => $('menu').classList.remove('open'));
+
+setInterval(() => {
+  const d = new Date();
+  $('clock').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}, 1000);
+
+function setLink(state, text) {
+  $('linkDot').className = 'dot' + (state ? ' ' + state : '');
+  $('linkText').textContent = text;
+}
+
+let ackTimer = null;
+function log(cmd, text, holdMs) {
+  $('ack').innerHTML = '&gt; <span class="cmd">' + esc(cmd) + '</span> ' + esc(text);
+  if (ackTimer) clearTimeout(ackTimer);
+  if (holdMs !== 0) ackTimer = setTimeout(() => { $('ack').innerHTML = ''; }, holdMs || 6000);
+}
+
+const ZONES = [
+  { name: 'Dining Room', level: 72 },
+  { name: 'Front Counter', level: 64 },
+  { name: 'Patio', level: 80 },
+  { name: 'Drive Thru', level: 55 },
+  { name: 'Restrooms', level: 40 }
+];
+function levelToDb(v) { return v <= 0 ? '-inf' : (Math.round((v - 100) * 0.4)) + ' dB'; }
+ZONES.forEach((z, i) => {
+  const row = document.createElement('div');
+  row.className = 'zone';
+  row.innerHTML = '<span class="dot ok"></span><span>' + esc(z.name) + '</span>' +
+    '<input type="range" min="0" max="100" value="' + z.level + '">' +
+    '<span class="db mono">' + levelToDb(z.level) + '</span>';
+  const slider = row.querySelector('input');
+  const db = row.querySelector('.db');
+  const dot = row.querySelector('.dot');
+  slider.addEventListener('input', () => { db.textContent = levelToDb(+slider.value); });
+  slider.addEventListener('change', () => {
+    dot.className = 'dot busy';
+    log('ZONE', z.name.toUpperCase() + ' level ' + levelToDb(+slider.value) + ', sending...', 0);
+    setTimeout(() => {
+      dot.className = slider.value === '0' ? 'dot' : 'dot ok';
+      log('ZONE', z.name.toUpperCase() + ' level ' + levelToDb(+slider.value) + ', ack from amp ' + (i + 1));
+    }, 700 + Math.random() * 600);
+  });
+  $('zones').appendChild(row);
+});
+
+let stream = null;
+let audioCtx = null;
+let analyser = null;
+let freqData = null;
+let timeData = null;
+
+let current = null;
+let busy = false;
+let nextTimer = null;
+let skipQueued = false;
+const history = [];
+
+async function connect() {
+  $('gateStatus').textContent = 'requesting handset audio link...';
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (err) {
+    $('gateStatus').textContent = 'link refused, allow microphone access and tap again';
+    return;
+  }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = audioCtx.createMediaStreamSource(stream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.75;
+  src.connect(analyser);
+  freqData = new Uint8Array(analyser.frequencyBinCount);
+  timeData = new Uint8Array(analyser.fftSize);
+  $('gate').classList.add('hidden');
+  requestWake();
+  drawMeters();
+  log('LINK', 'handshake with zone controller...', 0);
+  identify();
+}
+$('connectBtn').addEventListener('click', connect);
+
+let wakeLock = null;
+async function requestWake() {
+  if (!$('wakeToggle').checked || !('wakeLock' in navigator)) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+$('wakeToggle').addEventListener('change', () => {
+  if ($('wakeToggle').checked) requestWake();
+  else if (wakeLock) { wakeLock.release(); wakeLock = null; }
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    requestWake();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+});
+
+function recordClip() {
+  return new Promise((resolve) => {
+    const chunks = [];
+    const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.onstop = () => resolve(new Blob(chunks, { type: rec.mimeType || 'audio/webm' }));
+    rec.start();
+    setTimeout(() => rec.stop(), CLIP_MS);
+  });
+}
+
+function position() {
+  if (!current) return 0;
+  return current.offsetSeconds + (now() - current.epochMs) / 1000;
+}
+
+function schedule(ms) {
+  if (nextTimer) clearTimeout(nextTimer);
+  nextTimer = null;
+  if (!$('followToggle').checked && !skipQueued) return;
+  nextTimer = setTimeout(identify, Math.max(ms, 8000));
+}
+
+function scheduleFromTrack() {
+  if (!current) { schedule(20000); return; }
+  const dur = current.durationSeconds;
+  if (typeof dur === 'number' && dur > 0) {
+    const left = dur - position();
+    schedule(left > 0 ? left * 1000 + 4000 : 30000);
+  } else {
+    schedule(150000);
+  }
+}
+
+async function identify() {
+  if (busy || !stream) return;
+  busy = true;
+  if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
+  setLink('busy', 'SYNCING');
+  if (!current) {
+    $('lcd').classList.add('syncing');
+    $('title').textContent = 'Syncing feed';
+    $('artist').textContent = 'Reading in-store stream';
+  }
+  const capturedAt = now();
+  const blob = await recordClip();
+  let data = null;
+  try {
+    const form = new FormData();
+    form.append('audio', blob, 'clip.webm');
+    form.append('capturedAt', String(capturedAt));
+    form.append('clipDurationMs', String(CLIP_MS));
+    const res = await fetch('/api/recognize', { method: 'POST', body: form });
+    data = await res.json();
+  } catch (err) {
+    data = { error: 'network' };
+  }
+  busy = false;
+  $('lcd').classList.remove('syncing');
+
+  if (!data || data.error || typeof data.offsetSeconds !== 'number') {
+    if (current) {
+      setLink('ok', 'LINKED');
+      const dur = current.durationSeconds;
+      if (typeof dur === 'number' && position() > dur) {
+        log('FEED', 'crossfade in progress, holding...');
+        schedule(15000);
+      } else {
+        scheduleFromTrack();
+      }
+    } else {
+      setLink('', 'NO SIGNAL');
+      $('title').textContent = 'Standby';
+      $('artist').textContent = 'No program on feed, retrying';
+      log('FEED', 'no program detected, retrying shortly');
+      schedule(20000);
+    }
+    return;
+  }
+
+  setLink('ok', 'LINKED');
+  const fresh = {
+    title: data.title,
+    artist: data.artist,
+    offsetSeconds: data.offsetSeconds,
+    epochMs: typeof data.epochMs === 'number' ? data.epochMs : now(),
+    durationSeconds: data.videoDurationSeconds || null,
+    videoId: data.videoId || null,
+    bpm: data.bpm || null,
+    key: data.key || null,
+    startedAt: Date.now()
+  };
+
+  if (current && sameTitle(current.title, fresh.title)) {
+    current.offsetSeconds = fresh.offsetSeconds;
+    current.epochMs = fresh.epochMs;
+    if (!current.durationSeconds && fresh.durationSeconds) current.durationSeconds = fresh.durationSeconds;
+    const dur = current.durationSeconds;
+    if (typeof dur === 'number' && position() > dur - 2) {
+      current.durationSeconds = position() + 20;
+    }
+    renderTrack();
+    if (!skipQueued) log('SYNC', 'zone clock aligned');
+    scheduleFromTrack();
+    return;
+  }
+
+  if (current) pushHistory(current);
+  current = fresh;
+  renderTrack();
+  if (skipQueued) {
+    skipQueued = false;
+    $('skipBtn').classList.remove('armed');
+    log('SKIP', 'complete, now playing ' + fresh.title, 8000);
+  } else {
+    log('CUE', 'loaded "' + fresh.title + '" to all zones');
+  }
+  scheduleFromTrack();
+}
+
+function renderTrack() {
+  if (!current) return;
+  $('title').textContent = current.title;
+  $('artist').textContent = current.artist;
+  const bits = [];
+  if (current.bpm) bits.push(Math.round(current.bpm) + ' BPM');
+  if (current.key) bits.push('KEY ' + current.key);
+  bits.push('LICENSED BGM');
+  $('meta').textContent = bits.join(' / ');
+  $('bpmTag').textContent = current.bpm ? Math.round(current.bpm) + ' BPM' : '';
+  if (current.videoId) {
+    $('art').innerHTML = '<img alt="" src="https://i.ytimg.com/vi/' + encodeURIComponent(current.videoId) + '/mqdefault.jpg">';
+  }
+}
+
+function pushHistory(t) {
+  history.unshift({ title: t.title, artist: t.artist, at: t.startedAt });
+  if (history.length > 25) history.pop();
+  $('history').innerHTML = '';
+  history.forEach(h => {
+    const d = new Date(h.at);
+    const row = document.createElement('div');
+    row.className = 'hist';
+    row.innerHTML = '<span>' + esc(h.title) + ' <span style="color:var(--ink-faint)">' + esc(h.artist) + '</span></span>' +
+      '<span class="mono">' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + '</span>';
+    $('history').appendChild(row);
+  });
+  $('histCount').textContent = history.length + ' TRACKS';
+}
+
+function tickProgress() {
+  if (current) {
+    const pos = position();
+    const dur = current.durationSeconds;
+    $('elapsed').textContent = fmt(pos);
+    if (typeof dur === 'number' && dur > 0) {
+      const p = Math.min(100, (pos / dur) * 100);
+      $('progress').style.width = p + '%';
+      $('remaining').textContent = '-' + fmt(Math.max(0, dur - pos));
+      if (skipQueued) log('SKIP', 'queued, crossfade in ' + fmt(Math.max(0, dur - pos)), 0);
+    } else {
+      $('progress').style.width = '100%';
+      $('remaining').textContent = 'LIVE';
+      if (skipQueued) log('SKIP', 'queued for next rotation slot', 0);
+    }
+  }
+  setTimeout(tickProgress, 250);
+}
+tickProgress();
+
+const pauseReplies = [
+  'blocked, brand schedule lock active. Manager key required.',
+  'denied, zone is under corporate daypart control.',
+  'held for approval, request sent to district audio.'
+];
+let pauseIdx = 0;
+$('pauseBtn').addEventListener('click', () => {
+  if (!current) { log('PAUSE', 'no program loaded'); return; }
+  log('PAUSE', 'sending to all zones...', 0);
+  setTimeout(() => { log('PAUSE', pauseReplies[pauseIdx % pauseReplies.length], 7000); pauseIdx++; }, 900);
+});
+
+$('skipBtn').addEventListener('click', () => {
+  if (!current) { log('SKIP', 'no program loaded'); return; }
+  if (skipQueued) {
+    skipQueued = false;
+    $('skipBtn').classList.remove('armed');
+    log('SKIP', 'cancelled');
+    scheduleFromTrack();
+    return;
+  }
+  skipQueued = true;
+  $('skipBtn').classList.add('armed');
+  scheduleFromTrack();
+});
+
+$('prevBtn').addEventListener('click', () => {
+  if (!current) { log('REPLAY', 'no program loaded'); return; }
+  log('REPLAY', '"' + current.title + '" requested for next open slot', 7000);
+});
+
+$('resyncBtn').addEventListener('click', () => {
+  log('SYNC', 'manual resync requested', 0);
+  identify();
+});
+$('followToggle').addEventListener('change', () => {
+  if ($('followToggle').checked) scheduleFromTrack();
+  else if (nextTimer) { clearTimeout(nextTimer); nextTimer = null; }
+});
+
+const canvas = $('spectrum');
+const ctx2 = canvas.getContext('2d');
+let peakL = 0, peakR = 0;
+function drawMeters() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx2.clearRect(0, 0, w, h);
+
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(timeData);
+
+  const bars = 32;
+  const gap = 3;
+  const bw = (w - gap * (bars - 1)) / bars;
+  const usable = Math.floor(freqData.length * 0.7);
+  for (let i = 0; i < bars; i++) {
+    const a = Math.floor(Math.pow(i / bars, 1.7) * usable);
+    const b = Math.max(a + 1, Math.floor(Math.pow((i + 1) / bars, 1.7) * usable));
+    let m = 0;
+    for (let j = a; j < b; j++) m = Math.max(m, freqData[j]);
+    const bh = Math.max(2, (m / 255) * h);
+    ctx2.fillStyle = i < bars * 0.66 ? '#2f8a4a' : (i < bars * 0.85 ? '#b7791f' : '#c4561f');
+    ctx2.globalAlpha = 0.35 + 0.65 * (m / 255);
+    ctx2.fillRect(i * (bw + gap), h - bh, bw, bh);
+  }
+  ctx2.globalAlpha = 1;
+
+  let sum = 0;
+  for (let i = 0; i < timeData.length; i++) { const v = (timeData[i] - 128) / 128; sum += v * v; }
+  const rms = Math.sqrt(sum / timeData.length);
+  const db = rms > 0 ? 20 * Math.log10(rms) : -100;
+  const lvl = Math.max(0, Math.min(1, (db + 50) / 50));
+  peakL = Math.max(lvl, peakL * 0.92);
+  peakR = Math.max(lvl * (0.9 + Math.random() * 0.1), peakR * 0.9);
+  $('vuL').style.width = (peakL * 100) + '%';
+  $('vuR').style.width = (peakR * 100) + '%';
+  $('vuLdb').textContent = peakL < 0.02 ? '-inf' : Math.round(peakL * 50 - 50) + '';
+  $('vuRdb').textContent = peakR < 0.02 ? '-inf' : Math.round(peakR * 50 - 50) + '';
+
+  requestAnimationFrame(drawMeters);
+}
+</script>
+</body>
+</html>
