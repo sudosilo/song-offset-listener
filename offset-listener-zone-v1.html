@@ -63,6 +63,11 @@
   .lcdTop { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 1.5px; color: var(--lcd-dim); }
   .nowRow { display: flex; gap: 12px; margin-top: 10px; align-items: center; }
   .art { width: 78px; height: 78px; border-radius: 6px; background: var(--lcd-edge); flex: none; overflow: hidden; display: grid; place-items: center; }
+  .art { position: relative; }
+  #artImg { width: 100%; height: 100%; display: grid; place-items: center; }
+  #zoneSlot { position: absolute; inset: 0; overflow: hidden; visibility: hidden; }
+  #zoneSlot.on { visibility: visible; }
+  #zoneSlot iframe { position: absolute; top: 0; left: 50%; width: 139px; height: 78px; transform: translateX(-50%); border: 0; pointer-events: none; }
   .art img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.85) contrast(1.02); }
   .nowText { min-width: 0; flex: 1; }
   .title { font-size: 19px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -146,7 +151,7 @@
 <div class="lcd mono" id="lcd">
   <div class="lcdTop"><span>NOW PLAYING</span><span id="zoneTag">ALL ZONES</span></div>
   <div class="nowRow">
-    <div class="art" id="art"><svg width="28" height="28" viewBox="0 0 24 24"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3z" fill="#6f7d5c"/></svg></div>
+    <div class="art" id="art"><div id="artImg"><svg width="28" height="28" viewBox="0 0 24 24"><path d="M12 3v10.6A4 4 0 1 0 14 17V7h4V3z" fill="#6f7d5c"/></svg></div><div id="zoneSlot"><div id="zonePlayer"></div></div></div>
     <div class="nowText">
       <div class="title" id="title">Standby</div>
       <div class="artist" id="artist">Waiting for feed</div>
@@ -197,7 +202,6 @@
   <div class="toggleRow"><span>Resync now</span><span style="display:flex;gap:8px;align-items:center;"><span class="mono" id="syncState" style="font-size:11px;letter-spacing:1px;color:var(--ink-soft);">IDLE</span><button id="resyncBtn" class="mono" style="padding:6px 12px;border-radius:8px;border:1px solid var(--chassis-edge);background:var(--key);color:var(--ink);">SYNC</button></span></div>
 </div>
 
-<div id="zonePlayer" style="position:fixed;width:1px;height:1px;left:-10px;bottom:0;overflow:hidden;opacity:0;pointer-events:none;"></div>
 <script>
 const CLIP_MS = 9000;
 const $ = (id) => document.getElementById(id);
@@ -499,7 +503,7 @@ function renderTrack() {
   $('meta').textContent = bits.join(' / ');
   $('bpmTag').textContent = current.bpm ? Math.round(current.bpm) + ' BPM' : '';
   if (current.videoId) {
-    $('art').innerHTML = '<img alt="" src="https://i.ytimg.com/vi/' + encodeURIComponent(current.videoId) + '/mqdefault.jpg">';
+    $('artImg').innerHTML = '<img alt="" src="https://i.ytimg.com/vi/' + encodeURIComponent(current.videoId) + '/mqdefault.jpg">';
   }
 }
 
@@ -542,21 +546,29 @@ tickProgress();
 const ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>';
 const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></svg>';
 function renderAudioKey() {
-  $('pauseBtn').innerHTML = audioOn ? ICON_PAUSE : ICON_PLAY;
-  $('pauseBtn').setAttribute('aria-label', audioOn ? 'Pause' : 'Play');
-  $('audioState').textContent = audioOn ? 'LIVE' : 'PAUSED';
+  const playing = audioOn && playerState === 1;
+  $('pauseBtn').innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+  $('pauseBtn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  $('audioState').textContent = playing ? 'LIVE' : (audioOn ? 'ARMED' : 'PAUSED');
+  $('zoneSlot').classList.toggle('on', playerState === 1 || playerState === 3);
 }
 $('pauseBtn').addEventListener('click', () => {
-  audioOn = !audioOn;
-  renderAudioKey();
+  const playing = audioOn && playerState === 1;
   ensurePlayer();
-  if (audioOn) {
-    syncAudio(true);
-    log('PLAY', current ? 'handset output live, locked to ' + current.title : 'handset output armed, waiting for program');
-  } else {
-    syncAudio(false);
+  if (playing) {
+    audioOn = false;
+    try { player.pauseVideo(); } catch (e) {}
     log('PAUSE', 'handset output paused');
+  } else {
+    audioOn = true;
+    if (current && current.videoId && playerReady) {
+      syncAudio(true);
+      log('PLAY', 'handset output live, locked to ' + current.title);
+    } else {
+      log('PLAY', current ? 'no handset copy for this track' : 'handset output armed, waiting for program');
+    }
   }
+  renderAudioKey();
 });
 
 $('skipBtn').addEventListener('click', () => {
@@ -605,7 +617,14 @@ function whenYouTubeReady(cb) {
   document.body.appendChild(tag);
 }
 
-let player = null, playerReady = false, loadedVideo = null, audioOn = true;
+let player = null, playerReady = false, loadedVideo = null, audioOn = true, playerState = -1;
+setTimeout(renderAudioKey, 0);
+function zoneLog(event, extra) {
+  try {
+    fetch('/api/play-log', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(Object.assign({ deviceId: deviceId(), event: event, title: current ? current.title : null, videoId: current ? current.videoId : null, position: current ? +position().toFixed(2) : null, nudgeMs: delayMs, playedAtEpochMs: Date.now() }, extra || {})) }).catch(() => {});
+  } catch (e) {}
+}
 let delayMs = (() => { try { return parseInt(localStorage.getItem('halvard:delay') || '0', 10) || 0; } catch (e) { return 0; } })();
 function renderDelay() { $('delayVal').textContent = (delayMs >= 0 ? '+' : '') + delayMs + ' ms'; }
 renderDelay();
@@ -622,12 +641,17 @@ function ensurePlayer() {
   whenYouTubeReady(() => {
     if (player) return;
     player = new YT.Player('zonePlayer', {
-      height: '1', width: '1',
-      playerVars: { controls: 0, playsinline: 1, rel: 0 },
+      height: '78', width: '139',
+      playerVars: { controls: 0, playsinline: 1, rel: 0, disablekb: 1, fs: 0, iv_load_policy: 3 },
       events: {
-        onReady: () => { playerReady = true; syncAudio(true); },
-        onStateChange: (e) => { if (e.data === YT.PlayerState.PLAYING && !audioOn) { try { player.pauseVideo(); } catch (err) {} } },
-        onError: () => { log('FEED', 'handset copy unavailable for this track'); }
+        onReady: () => { playerReady = true; zoneLog('zone_player_ready'); syncAudio(true); },
+        onStateChange: (e) => {
+          playerState = e.data;
+          if (e.data === 1 && !audioOn) { try { player.pauseVideo(); } catch (err) {} }
+          if (e.data === 1 || e.data === 2 || e.data === 0) zoneLog('zone_player_state', { driftMs: e.data });
+          renderAudioKey();
+        },
+        onError: (e) => { zoneLog('zone_player_error', { errorMessage: 'youtube error ' + (e && e.data) }); log('FEED', 'handset copy blocked for this track, error ' + (e && e.data)); }
       }
     });
   });
@@ -641,11 +665,11 @@ function syncAudio(force) {
   try {
     if (loadedVideo !== current.videoId) {
       loadedVideo = current.videoId;
-      player.mute();
+      player.unMute();
       player.loadVideoById(current.videoId, t);
       setTimeout(() => {
-        try { player.seekTo(Math.max(0, targetPos()), true); if (audioOn) { player.playVideo(); player.unMute(); } } catch (err) {}
-      }, 800);
+        try { if (audioOn) { player.seekTo(Math.max(0, targetPos()), true); player.playVideo(); } } catch (err) {}
+      }, 1200);
       return;
     }
     const cur = player.getCurrentTime();
