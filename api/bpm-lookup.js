@@ -28,6 +28,7 @@ export default async function handler(request) {
 }
 
 let lastReason = null;
+let deezerSeen = '';
 
 async function lookup(title, artist) {
   lastReason = null;
@@ -42,7 +43,9 @@ async function deezer(title, artist) {
     const res = await fetch('https://api.deezer.com/search?limit=8&q=' + encodeURIComponent(q));
     if (!res.ok) { lastReason = 'deezer http ' + res.status; return null; }
     const data = await res.json();
+    if (data && data.error) { lastReason = 'deezer: ' + JSON.stringify(data.error).slice(0, 140); return null; }
     let rows = Array.isArray(data.data) ? data.data : [];
+    deezerSeen = rows.length + ' strict';
     if (!rows.length && artist) {
       const loose = await fetch('https://api.deezer.com/search?limit=8&q=' + encodeURIComponent(artist + ' ' + title));
       const ld = loose.ok ? await loose.json() : {};
@@ -59,7 +62,7 @@ async function deezer(title, artist) {
       const bpm = parseFloat(t.bpm);
       if (bpm > 0) return { bpm: Math.round(bpm * 10) / 10, key: null, source: 'deezer' };
     }
-    lastReason = ranked.length ? 'deezer has no bpm for this track' : 'deezer found no matching track';
+    lastReason = ranked.length ? 'deezer has no bpm for this track' : 'deezer found no matching track (' + deezerSeen + ', ' + rows.length + ' rows)';
     return null;
   } catch (err) {
     lastReason = 'deezer unreachable';
