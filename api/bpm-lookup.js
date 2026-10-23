@@ -1,4 +1,4 @@
-import { cacheGet, cacheSet, indexBpm, normQuery, lastProbe } from '../lib/search-cache.js';
+import { cacheGet, cacheSet, indexBpm, normQuery } from '../lib/search-cache.js';
 
 
 export const config = { runtime: 'edge' };
@@ -35,8 +35,7 @@ export default async function handler(request) {
     key: found ? found.key : null,
     source: found ? found.source : null,
     error: found ? null : (lastReason || 'no matching artist in results'),
-    probe: params.get('debug') ? lastProbe : undefined,
-    v: 3
+    v: 2
   });
 }
 
