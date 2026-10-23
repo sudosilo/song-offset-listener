@@ -22,13 +22,17 @@ export default async function handler(request) {
     bpm: found ? found.bpm : null,
     key: found ? found.key : null,
     source: found ? 'getsongbpm' : null,
-    error: found ? null : 'no bpm found'
+    error: found ? null : (lastReason || 'no matching artist in results'),
+    v: 2
   });
 }
 
+let lastReason = null;
+
 async function lookup(title, artist) {
+  lastReason = null;
   const key = process.env.GETSONGBPM_API_KEY;
-  if (!key) return null;
+  if (!key) { lastReason = 'GETSONGBPM_API_KEY not set on this project'; return null; }
   const base = 'https://api.getsongbpm.com/search/?api_key=' + encodeURIComponent(key);
   const want = norm(artist);
 
@@ -44,10 +48,13 @@ async function lookup(title, artist) {
 async function get(url) {
   try {
     const res = await fetch(url, { headers: { 'User-Agent': 'LyricSmash/1.0' } });
-    if (!res.ok) return [];
+    if (!res.ok) { lastReason = 'getsongbpm http ' + res.status; return []; }
     const data = await res.json();
-    return Array.isArray(data.search) ? data.search : [];
+    if (!Array.isArray(data.search)) { lastReason = 'getsongbpm: ' + JSON.stringify(data.search || data.error || data).slice(0, 120); return []; }
+    if (!data.search.length) lastReason = 'getsongbpm returned no songs';
+    return data.search;
   } catch (err) {
+    lastReason = 'getsongbpm unreachable';
     return [];
   }
 }
