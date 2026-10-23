@@ -1,3 +1,5 @@
+import { cacheGet, cacheSet, indexBpm, normQuery } from '../lib/search-cache.js';
+
 
 export const config = { runtime: 'edge' };
 
@@ -13,8 +15,18 @@ export default async function handler(request) {
 
   if (!title) return reply({ error: 'missing title', bpm: null }, 400);
 
+  const cacheKey = 'songsync:bpm:' + normQuery(title + '|' + artist);
+  const cached = await cacheGet(cacheKey);
+  if (cached && cached.bpm) {
+    return reply({ title, artist, bpm: cached.bpm, key: cached.key || null, source: cached.source || null, error: null, cached: true, v: 2 });
+  }
+
   let found = null;
   try { found = await lookup(title, artist); } catch (err) { found = null; }
+  if (found && found.bpm) {
+    await cacheSet(cacheKey, found, 0);
+    await addToSongCache(title, artist, found);
+  }
 
   return reply({
     title,
@@ -25,6 +37,30 @@ export default async function handler(request) {
     error: found ? null : (lastReason || 'no matching artist in results'),
     v: 2
   });
+}
+
+// Same song record and BPM index the listener writes, so suggestions and beatmatch see every lookup.
+async function addToSongCache(title, artist, found) {
+  if (!artist) return;
+  const songKey = 'songsync:ytcache:' + encodeURIComponent((title + '|' + artist).toLowerCase());
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return;
+  try {
+    const res = await fetch(`${url}/get/${songKey}`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    const record = data && data.result ? JSON.parse(data.result) : { title, artist };
+    if (typeof record.bpm === 'number') return;
+    record.bpm = found.bpm;
+    if (found.key) record.key = found.key;
+    record.bpmSource = found.source;
+    await fetch(`${url}/set/${songKey}?EX=2592000`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(record)
+    });
+    await indexBpm(songKey, found.bpm);
+  } catch (err) {}
 }
 
 let lastReason = null;
