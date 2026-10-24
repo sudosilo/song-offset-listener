@@ -9,6 +9,7 @@ const UA = { 'User-Agent': 'LyricSmash/1.0 ( no-contact-configured )', Accept: '
 const HEADERS = { 'content-type': 'application/json' };
 
 export default async function handler(request) {
+  trace.length = 0;
   const p = new URL(request.url).searchParams;
   const tag = (p.get('tag') || '').toLowerCase().replace(/["\\]/g, ' ').trim().slice(0, 40);
   const era = parseInt(p.get('era'), 10);
