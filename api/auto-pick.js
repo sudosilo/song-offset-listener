@@ -13,7 +13,7 @@ export default async function handler(request) {
   const tag = (p.get('tag') || '').toLowerCase().replace(/["\\]/g, ' ').trim().slice(0, 40);
   const era = parseInt(p.get('era'), 10);
   const bpm = parseFloat(p.get('bpm'));
-  const spread = Math.min(12, Math.max(2, parseFloat(p.get('spread')) || 4));
+  const spread = Math.min(12, Math.max(2, parseFloat(p.get('spread')) || 6));
   const skip = new Set((p.get('skip') || '').split(',').map(s => s.trim()).filter(Boolean));
   if (!tag || !(bpm > 40)) return reply({ error: 'need a genre and a bpm', picks: [] }, 400);
 
@@ -47,11 +47,12 @@ export default async function handler(request) {
   }
   if (!pool.length) return reply({ error: 'no songs found for that genre and decade', picks: [] });
 
-  const cands = shuffle(pool.filter(x => !skip.has((x.title + '|' + x.artist).toLowerCase()))).slice(0, 16);
+  const cands = shuffle(pool.filter(x => !skip.has((x.title + '|' + x.artist).toLowerCase()))).slice(0, 48);
   const lo = Math.floor(bpm - spread), hi = Math.ceil(bpm + spread);
   const picks = [];
-  for (let i = 0; i < cands.length && picks.length < 3; i += 4) {
-    const batch = await Promise.all(cands.slice(i, i + 4).map(c => checkTempo(c, lo, hi)));
+  for (let i = 0; i < cands.length && picks.length < 3; i += 6) {
+    const batch = await Promise.all(cands.slice(i, i + 6).map(c => checkTempo(c, lo, hi)));
+    if (i) await wait(400);
     batch.forEach(x => { if (x) picks.push(x); });
   }
   return reply({ picks, poolSize: pool.length });
