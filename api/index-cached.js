@@ -9,6 +9,10 @@ const UA = { 'User-Agent': 'LyricSmash/1.0 ( no-contact-configured )', Accept: '
 const HEADERS = { 'content-type': 'application/json' };
 
 export default async function handler(request) {
+  try { return await run(request); } catch (err) { return reply({ error: String(err && err.stack || err).slice(0, 400) }, 200); }
+}
+
+async function run(request) {
   const started = Date.now();
   const limit = Math.min(15, Math.max(1, parseInt(new URL(request.url).searchParams.get('limit'), 10) || 10));
   const url = process.env.UPSTASH_REDIS_REST_URL, token = process.env.UPSTASH_REDIS_REST_TOKEN;
