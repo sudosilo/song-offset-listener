@@ -28,7 +28,7 @@ export default async function handler(request) {
     const first = await mb('/recording/?fmt=json&limit=100&query=' + encodeURIComponent(query));
     const count = first ? first.count || 0 : 0;
     let rows = first ? first.recordings || [] : [];
-    if (count > 100 && Date.now() - started < 6000) {
+    if (count > 100 && Date.now() - started < 3000) {
       const offset = Math.floor(Math.random() * Math.min(count - 100, 2000));
       await wait(1100);
       const more = await mb('/recording/?fmt=json&limit=100&offset=' + offset + '&query=' + encodeURIComponent(query));
@@ -52,12 +52,12 @@ export default async function handler(request) {
   const cands = shuffle(pool.filter(x => !skip.has((x.title + '|' + x.artist).toLowerCase()))).slice(0, 28);
   const lo = Math.floor(bpm - spread), hi = Math.ceil(bpm + spread);
   const picks = [];
-  for (let i = 0; i < cands.length && picks.length < (Date.now() - started > 12000 ? 1 : 3) && Date.now() - started < 18000; i += 4) {
-    if (i) await wait(700);
+  for (let i = 0; i < cands.length && picks.length < (Date.now() - started > 6000 ? 1 : 3) && Date.now() - started < 9000; i += 4) {
+    if (i) await wait(300);
     const batch = await Promise.all(cands.slice(i, i + 4).map(c => checkTempo(c, lo, hi)));
     batch.forEach(x => { if (x) picks.push(x); });
   }
-  return reply({ picks, poolSize: pool.length, checked: p.get('debug') ? trace.slice(0, 30) : undefined, sample: p.get('debug') ? pool.slice(0, 8) : undefined });
+  return reply({ picks, poolSize: pool.length, ms: Date.now() - started, checked: p.get('debug') ? trace.slice(0, 30) : undefined, sample: p.get('debug') ? pool.slice(0, 8) : undefined });
 }
 
 const trace = [];
@@ -98,7 +98,7 @@ async function mb(path) {
   for (let i = 0; i < 2; i++) {
     try {
       const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 8000);
+      const timer = setTimeout(() => ctl.abort(), 5000);
       const res = await fetch(MB + path, { headers: UA, signal: ctl.signal });
       clearTimeout(timer);
       if (res.status === 503) { await wait(1500); continue; }
