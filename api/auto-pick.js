@@ -51,10 +51,12 @@ export default async function handler(request) {
   }
   if (!pool.length) return reply({ error: 'no songs found for that genre and decade', picks: [] });
 
+  let cacheInfo = null;
   let usable = pool.filter(x => !skip.has((x.title + '|' + x.artist).toLowerCase()));
   if (cachedOnly) {
     const have = await cachedSongs(kind);
     usable = usable.filter(x => have.has(norm(x.title + x.artist)));
+    cacheInfo = { cachedSongs: have.size, usable: usable.length };
     if (!usable.length) return reply({ picks: [], poolSize: pool.length, cachedMatches: 0, error: 'none of these songs are cached yet' });
   }
   const cands = shuffle(usable).slice(0, 28);
@@ -65,7 +67,7 @@ export default async function handler(request) {
     const batch = await Promise.all(cands.slice(i, i + 4).map(c => checkTempo(c, lo, hi)));
     batch.forEach(x => { if (x) picks.push(x); });
   }
-  return reply({ picks, poolSize: pool.length, ms: Date.now() - started, checked: p.get('debug') ? trace.slice(0, 30) : undefined, sample: p.get('debug') ? pool.slice(0, 8) : undefined });
+  return reply({ picks, poolSize: pool.length, cache: cacheInfo, ms: Date.now() - started, checked: p.get('debug') ? trace.slice(0, 30) : undefined, sample: p.get('debug') ? pool.slice(0, 8) : undefined });
 }
 
 const trace = [];
