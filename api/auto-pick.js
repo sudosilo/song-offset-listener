@@ -67,6 +67,7 @@ async function checkTempo(c, lo, hi) {
     const key = 'songsync:bpm:' + normQuery(c.title + '|' + c.artist);
     let bpm = null, title = c.title, artist = c.artist, dur = null;
     const cached = await cacheGet(key);
+    if (cached && !cached.bpm && typeof cached.rank === 'number' && cached.rank < MIN_RANK) return null;
     if (cached && cached.bpm) { bpm = cached.bpm; if (typeof cached.rank === 'number' && cached.rank < MIN_RANK) return null; }
     else {
       const res = await fetch('https://api.deezer.com/search?limit=5&q=' + encodeURIComponent(c.artist + ' ' + c.title));
