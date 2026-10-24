@@ -161,14 +161,36 @@ async function savedSongFacts() {
     const r = await post(['MGET'].concat(members.slice(i, i + 300).map(n => 'songsync:songmeta:' + n)));
     (r.result || []).forEach(v => { try { if (v) out.push(JSON.parse(v)); } catch (e) {} });
   }
+  const artists = [...new Set(out.map(m => m && m.artist).filter(Boolean))];
+  for (let i = 0; i < artists.length; i += 300) {
+    const r = await post(['MGET'].concat(artists.slice(i, i + 300).map(a => 'songsync:artisttags:' + norm(a))));
+    const got = {};
+    (r.result || []).forEach((v, k) => { try { if (v) got[artists[i + k]] = JSON.parse(v); } catch (e) {} });
+    out.forEach(m => { if (m && got[m.artist] && (!m.tags || !m.tags.length)) m.tags = got[m.artist]; });
+  }
   if (out.length) await cacheSet('songsync:songmetas', out, 300);
   return out;
 }
+const SYN = {
+  industrial: ['metal', 'electro', 'alternative'], 'hard rock': ['rock', 'metal'], 'heavy metal': ['metal'], metal: ['metal'],
+  'hip hop': ['rap/hip hop'], rap: ['rap/hip hop'], trap: ['rap/hip hop'], 'r&b': ['r&b'], soul: ['soul & funk', 'r&b'], funk: ['soul & funk'],
+  disco: ['dance', 'soul & funk'], synthpop: ['pop', 'electro'], 'new wave': ['pop', 'alternative', 'rock'], punk: ['rock', 'alternative'],
+  grunge: ['rock', 'alternative'], house: ['dance', 'electro'], techno: ['electro', 'dance'], 'drum and bass': ['electro', 'dance'],
+  dubstep: ['electro', 'dance'], electronic: ['electro', 'dance'], emo: ['alternative', 'rock'], 'indie rock': ['alternative', 'rock'],
+  'alternative rock': ['alternative', 'rock'], 'trip hop': ['electro', 'alternative'], 'classic rock': ['rock'], rock: ['rock'], pop: ['pop'],
+  country: ['country'], blues: ['blues'], jazz: ['jazz'], reggae: ['reggae'], latin: ['latin'], dance: ['dance']
+};
 function tagMatches(m, tag) {
-  const hay = ((m.tags || []).concat(m.genres || [])).map(x => x.toLowerCase()).join(' | ');
-  return tag.toLowerCase().split(/[\s,/&]+/).filter(Boolean).every(w => hay.includes(w));
+  const t = tag.toLowerCase().trim();
+  const tags = (m.tags || []).map(x => x.toLowerCase());
+  const genres = (m.genres || []).map(x => x.toLowerCase());
+  const words = t.split(/[\s,/&]+/).filter(Boolean);
+  if (tags.length && words.every(w => tags.join(' | ').includes(w))) return true;
+  if (words.every(w => genres.join(' | ').includes(w))) return true;
+  const syn = SYN[t];
+  if (syn && genres.some(g => syn.includes(g))) return !tags.length || tags.some(x => words.some(w => x.includes(w))) || genres.some(g => syn[0] === g);
+  return false;
 }
-
 function norm(s) { return (s || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^a-z0-9]/g, ''); }
 
 async function mb(path) {

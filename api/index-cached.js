@@ -34,14 +34,42 @@ export default async function handler(request) {
   const indexed = new Set((await redis(url, auth, ['SMEMBERS', 'songsync:songindex'])) || []);
   const todo = [...songs.entries()].filter(([n]) => !indexed.has(n));
   let done = 0;
-  for (const [n, q] of todo.slice(0, limit)) {
-    if (Date.now() - started > 17000) break;
-    const meta = await describe(q);
-    await cacheSet('songsync:songmeta:' + n, meta || { query: q, missing: true }, 0);
-    await redis(url, auth, ['SADD', 'songsync:songindex', n]);
-    done++;
+  // fast pass: Deezer facts, six songs at a time
+  for (let k = 0; k < todo.length && Date.now() - started < 15000; k += 6) {
+    const wave = todo.slice(k, k + 6);
+    const metas = await Promise.all(wave.map(([n, q]) => describe(q)));
+    for (let w = 0; w < wave.length; w++) {
+      const [n, q] = wave[w];
+      await cacheSet('songsync:songmeta:' + n, metas[w] || { query: q, missing: true }, 0);
+      await redis(url, auth, ['SADD', 'songsync:songindex', n]);
+      if (metas[w] && metas[w].artist) await redis(url, auth, ['SADD', 'songsync:needtags', norm(metas[w].artist) + '|' + metas[w].artist]);
+      done++;
+    }
+    await new Promise(r => setTimeout(r, 800));
   }
-  return reply({ saved: songs.size, indexed: indexed.size + done, remaining: Math.max(0, todo.length - done), ms: Date.now() - started });
+  // slow pass: genre tags per artist from MusicBrainz, one per second, with whatever time is left
+  let tagged = 0;
+  if (todo.length - done <= 0) {
+    const need = (await redis(url, auth, ['SRANDMEMBER', 'songsync:needtags', '12'])) || [];
+    for (const entry of need) {
+      if (Date.now() - started > 18000) break;
+      const cut = entry.indexOf('|');
+      const artist = entry.slice(cut + 1);
+      const tags = await artistTags(artist);
+      if (tags) { await cacheSet('songsync:artisttags:' + norm(artist), tags, 0); await redis(url, auth, ['SREM', 'songsync:needtags', entry]); tagged++; }
+      await new Promise(r => setTimeout(r, 1100));
+    }
+    if (tagged) await cacheSet('songsync:songmetas', null, 1);
+  }
+  const tagsLeft = (await redis(url, auth, ['SCARD', 'songsync:needtags'])) || 0;
+  return reply({ saved: songs.size, indexed: indexed.size + done, remaining: Math.max(0, todo.length - done), artistsToTag: tagsLeft, ms: Date.now() - started });
+}
+
+async function artistTags(artist) {
+  const mbr = await mb('/artist/?fmt=json&limit=3&query=' + encodeURIComponent('artist:"' + artist.replace(/["\\]/g, ' ') + '"'));
+  if (!mbr) return null;
+  const a = (mbr.artists || []).find(x => norm(x.name) === norm(artist)) || (mbr.artists || [])[0];
+  return a && a.tags ? a.tags.sort((x, y) => (y.count || 0) - (x.count || 0)).slice(0, 12).map(t => t.name) : [];
 }
 
 async function describe(q) {
@@ -51,14 +79,6 @@ async function describe(q) {
   const tr = await dz('https://api.deezer.com/track/' + hit.id);
   const al = hit.album ? await dz('https://api.deezer.com/album/' + hit.album.id) : null;
   const artist = hit.artist ? hit.artist.name : '';
-  let tags = await cacheGet('songsync:artisttags:' + norm(artist));
-  if (!tags) {
-    const mbr = await mb('/artist/?fmt=json&limit=3&query=' + encodeURIComponent('artist:"' + artist.replace(/["\\]/g, ' ') + '"'));
-    const a = ((mbr && mbr.artists) || []).find(x => norm(x.name) === norm(artist)) || ((mbr && mbr.artists) || [])[0];
-    tags = a && a.tags ? a.tags.sort((x, y) => (y.count || 0) - (x.count || 0)).slice(0, 12).map(t => t.name) : [];
-    await cacheSet('songsync:artisttags:' + norm(artist), tags, 0);
-    await new Promise(r => setTimeout(r, 1000));
-  }
   const date = (tr && tr.release_date) || (al && al.release_date) || '';
   return {
     query: q,
@@ -67,8 +87,7 @@ async function describe(q) {
     bpm: tr && parseFloat(tr.bpm) > 0 ? Math.round(parseFloat(tr.bpm) * 10) / 10 : null,
     rank: hit.rank || 0,
     year: date ? parseInt(date.slice(0, 4), 10) : null,
-    genres: al && al.genres && al.genres.data ? al.genres.data.map(g => g.name) : [],
-    tags
+    genres: al && al.genres && al.genres.data ? al.genres.data.map(g => g.name) : []
   };
 }
 
