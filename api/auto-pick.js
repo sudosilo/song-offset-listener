@@ -21,6 +21,23 @@ export default async function handler(request) {
   const cachedOnly = p.get('cached') === '1' && kind;
   if (!tag || !(bpm > 40)) return reply({ error: 'need a genre and a bpm', picks: [] }, 400);
 
+  if (cachedOnly) {
+    const metas = await savedSongFacts();
+    const have = await cachedSongs(kind);
+    const lo = bpm - spread, hi = bpm + spread;
+    const fits = metas.filter(m => m && !m.missing && m.bpm && have.has(norm(m.query)) &&
+      !skip.has(((m.title || '') + '|' + (m.artist || '')).toLowerCase()) &&
+      tagMatches(m, tag) && (!(era >= 1900) || (m.year >= era && m.year <= era + 9)));
+    const picks = [];
+    for (const m of shuffle(fits)) {
+      const f = [1, 2, 0.5].find(x => m.bpm * x >= lo && m.bpm * x <= hi);
+      if (f) picks.push({ title: m.title, artist: m.artist, bpm: m.bpm, fold: f, query: m.query });
+      if (picks.length >= 3) break;
+    }
+    return reply({ picks, cache: { indexedSongs: metas.length, savedForSide: have.size, fitGenre: fits.length }, ms: Date.now() - started,
+      error: picks.length ? undefined : (fits.length ? 'no saved songs in that tempo window' : 'no saved songs in that genre and decade yet') });
+  }
+
   let query = 'tag:"' + tag + '" AND status:official';
   if (era >= 1900 && era <= 2090) query += ' AND firstreleasedate:[' + era + ' TO ' + (era + 9) + ']';
 
@@ -130,6 +147,26 @@ async function cachedSongs(kind) {
   } while (cursor !== '0' && rounds < 40);
   if (out.size) await cacheSet(listKey, [...out], 600);
   return out;
+}
+
+async function savedSongFacts() {
+  const hot = await cacheGet('songsync:songmetas');
+  if (hot && hot.length) return hot;
+  const url = process.env.UPSTASH_REDIS_REST_URL, token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return [];
+  const post = async (body) => (await (await fetch(url + (Array.isArray(body[0]) ? '/pipeline' : ''), { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify(body) })).json());
+  const members = (await post(['SMEMBERS', 'songsync:songindex'])).result || [];
+  const out = [];
+  for (let i = 0; i < members.length; i += 300) {
+    const r = await post(['MGET'].concat(members.slice(i, i + 300).map(n => 'songsync:songmeta:' + n)));
+    (r.result || []).forEach(v => { try { if (v) out.push(JSON.parse(v)); } catch (e) {} });
+  }
+  if (out.length) await cacheSet('songsync:songmetas', out, 300);
+  return out;
+}
+function tagMatches(m, tag) {
+  const hay = ((m.tags || []).concat(m.genres || [])).map(x => x.toLowerCase()).join(' | ');
+  return tag.toLowerCase().split(/[\s,/&]+/).filter(Boolean).every(w => hay.includes(w));
 }
 
 function norm(s) { return (s || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^a-z0-9]/g, ''); }
