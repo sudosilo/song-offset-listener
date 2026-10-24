@@ -20,7 +20,17 @@ export default async function handler(request) {
       return new Response(JSON.stringify(Object.assign({}, cached, { cached: true })), { status: 200, headers: HEADERS });
     }
 
-    const outcome = await searchYouTube(query);
+    // A visitor can send their own key; if it fails, fall back to the shared one.
+    const own = (request.headers.get('x-yt-key') || '').trim();
+    const ownOk = /^[A-Za-z0-9_-]{30,60}$/.test(own);
+    let outcome = ownOk ? await searchYouTube(query, 8, own) : null;
+    if (outcome && !outcome.error) outcome.keyUsed = 'personal';
+    if (!outcome || outcome.error) {
+      const ownError = outcome && outcome.error;
+      outcome = await searchYouTube(query);
+      outcome.keyUsed = 'shared';
+      if (ownError) outcome.personalKeyError = ownError;
+    }
     if (!outcome.error && outcome.results && outcome.results.length) {
       await cacheSet(key, outcome, THIRTY_DAYS);
     }
