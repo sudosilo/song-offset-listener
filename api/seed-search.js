@@ -19,6 +19,9 @@ export default async function handler(request) {
 
   const key = 'songsync:search:' + normQuery(query);
   const existing = await cacheGet(key);
+  if (body.checkOnly) {
+    return reply({ cached: !!(existing && Array.isArray(existing.results) && existing.results.length) });
+  }
   if (existing && Array.isArray(existing.results) && existing.results.length && !body.replace) {
     return reply({ stored: false, reason: 'already cached', count: existing.results.length });
   }
