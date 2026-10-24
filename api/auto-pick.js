@@ -17,6 +17,8 @@ export default async function handler(request) {
   const bpm = parseFloat(p.get('bpm'));
   const spread = Math.min(16, Math.max(2, parseFloat(p.get('spread')) || 6));
   const skip = new Set((p.get('skip') || '').split(',').map(s => s.trim()).filter(Boolean));
+  const kind = p.get('kind') === 'inst' ? 'instrumental' : (p.get('kind') === 'aca' ? 'acapella' : null);
+  const cachedOnly = p.get('cached') === '1' && kind;
   if (!tag || !(bpm > 40)) return reply({ error: 'need a genre and a bpm', picks: [] }, 400);
 
   let query = 'tag:"' + tag + '" AND status:official';
@@ -49,7 +51,13 @@ export default async function handler(request) {
   }
   if (!pool.length) return reply({ error: 'no songs found for that genre and decade', picks: [] });
 
-  const cands = shuffle(pool.filter(x => !skip.has((x.title + '|' + x.artist).toLowerCase()))).slice(0, 28);
+  let usable = pool.filter(x => !skip.has((x.title + '|' + x.artist).toLowerCase()));
+  if (cachedOnly) {
+    const have = await cachedSongs(kind);
+    usable = usable.filter(x => have.has(norm(x.title + x.artist)));
+    if (!usable.length) return reply({ picks: [], poolSize: pool.length, cachedMatches: 0, error: 'none of these songs are cached yet' });
+  }
+  const cands = shuffle(usable).slice(0, 28);
   const lo = Math.floor(bpm - spread), hi = Math.ceil(bpm + spread);
   const picks = [];
   for (let i = 0; i < cands.length && picks.length < (Date.now() - started > 6000 ? 1 : 3) && Date.now() - started < 9000; i += 4) {
@@ -95,6 +103,33 @@ async function checkTempo(c, lo, hi) {
     return null;
   }
 }
+// Every song whose acapella or instrumental search is already saved, so picking it costs no video searches.
+async function cachedSongs(kind) {
+  const listKey = 'songsync:cachedsongs:' + kind;
+  const saved = await cacheGet(listKey);
+  if (saved && saved.length) return new Set(saved);
+  const url = process.env.UPSTASH_REDIS_REST_URL, token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const out = new Set();
+  if (!url || !token) return out;
+  const suffix = ' ' + kind;
+  let cursor = '0', rounds = 0;
+  do {
+    try {
+      const res = await fetch(url + '/scan/' + cursor + '/match/' + encodeURIComponent('songsync:search:*' + suffix) + '/count/1000', { headers: { Authorization: 'Bearer ' + token } });
+      const r = (await res.json()).result || ['0', []];
+      cursor = String(r[0]);
+      for (const k of r[1] || []) {
+        let q = k.slice('songsync:search:'.length);
+        try { q = decodeURIComponent(q); } catch (e) {}
+        if (q.endsWith(suffix)) out.add(norm(q.slice(0, -suffix.length)));
+      }
+    } catch (e) { break; }
+    rounds++;
+  } while (cursor !== '0' && rounds < 40);
+  if (out.size) await cacheSet(listKey, [...out], 600);
+  return out;
+}
+
 function norm(s) { return (s || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^a-z0-9]/g, ''); }
 
 async function mb(path) {
