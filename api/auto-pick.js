@@ -15,7 +15,7 @@ export default async function handler(request) {
   const tag = (p.get('tag') || '').toLowerCase().replace(/["\\]/g, ' ').trim().slice(0, 40);
   const era = parseInt(p.get('era'), 10);
   const bpm = parseFloat(p.get('bpm'));
-  const spread = Math.min(12, Math.max(2, parseFloat(p.get('spread')) || 6));
+  const spread = Math.min(16, Math.max(2, parseFloat(p.get('spread')) || 6));
   const skip = new Set((p.get('skip') || '').split(',').map(s => s.trim()).filter(Boolean));
   if (!tag || !(bpm > 40)) return reply({ error: 'need a genre and a bpm', picks: [] }, 400);
 
