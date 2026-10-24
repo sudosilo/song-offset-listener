@@ -47,12 +47,12 @@ export default async function handler(request) {
   }
   if (!pool.length) return reply({ error: 'no songs found for that genre and decade', picks: [] });
 
-  const cands = shuffle(pool.filter(x => !skip.has((x.title + '|' + x.artist).toLowerCase()))).slice(0, 48);
+  const cands = shuffle(pool.filter(x => !skip.has((x.title + '|' + x.artist).toLowerCase()))).slice(0, 28);
   const lo = Math.floor(bpm - spread), hi = Math.ceil(bpm + spread);
   const picks = [];
-  for (let i = 0; i < cands.length && picks.length < 3; i += 6) {
-    const batch = await Promise.all(cands.slice(i, i + 6).map(c => checkTempo(c, lo, hi)));
-    if (i) await wait(400);
+  for (let i = 0; i < cands.length && picks.length < 3; i += 4) {
+    if (i) await wait(700);
+    const batch = await Promise.all(cands.slice(i, i + 4).map(c => checkTempo(c, lo, hi)));
     batch.forEach(x => { if (x) picks.push(x); });
   }
   return reply({ picks, poolSize: pool.length });
@@ -60,22 +60,34 @@ export default async function handler(request) {
 
 async function checkTempo(c, lo, hi) {
   try {
-    const q = 'artist:"' + c.artist + '" track:"' + c.title + '" bpm_min:"' + lo + '" bpm_max:"' + hi + '"';
-    const res = await fetch('https://api.deezer.com/search?limit=3&q=' + encodeURIComponent(q));
-    if (!res.ok) return null;
-    const data = await res.json();
-    const hit = (data.data || [])[0];
-    if (!hit) return null;
-    const tr = await fetch('https://api.deezer.com/track/' + hit.id);
-    const t = tr.ok ? await tr.json() : {};
-    const exact = parseFloat(t.bpm);
-    const bpm = exact > 0 ? Math.round(exact * 10) / 10 : Math.round((lo + hi) / 2);
-    if (exact > 0) await cacheSet('songsync:bpm:' + normQuery(c.title + '|' + c.artist), { bpm, key: null, source: 'deezer' }, 0);
-    return { title: hit.title_short || c.title, artist: hit.artist ? hit.artist.name : c.artist, bpm, durationSeconds: hit.duration || null };
+    const key = 'songsync:bpm:' + normQuery(c.title + '|' + c.artist);
+    let bpm = null, title = c.title, artist = c.artist, dur = null;
+    const cached = await cacheGet(key);
+    if (cached && cached.bpm) bpm = cached.bpm;
+    else {
+      const res = await fetch('https://api.deezer.com/search?limit=5&q=' + encodeURIComponent(c.artist + ' ' + c.title));
+      if (!res.ok) return null;
+      const data = await res.json();
+      const want = norm(c.artist), wantT = norm(c.title);
+      const hit = (data.data || []).find(r => r.artist && norm(r.artist.name) === want && norm(r.title_short || r.title).startsWith(wantT));
+      if (!hit) return null;
+      const tr = await fetch('https://api.deezer.com/track/' + hit.id);
+      const t = tr.ok ? await tr.json() : {};
+      bpm = parseFloat(t.bpm) > 0 ? Math.round(parseFloat(t.bpm) * 10) / 10 : null;
+      if (!bpm) return null;
+      await cacheSet(key, { bpm, key: null, source: 'deezer' }, 0);
+      title = hit.title_short || c.title; artist = hit.artist.name; dur = hit.duration || null;
+    }
+    for (const f of [1, 2, 0.5]) {
+      const v = bpm * f;
+      if (v >= lo && v <= hi) return { title, artist, bpm, durationSeconds: dur, fold: f };
+    }
+    return null;
   } catch (err) {
     return null;
   }
 }
+function norm(s) { return (s || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^a-z0-9]/g, ''); }
 
 async function mb(path) {
   for (let i = 0; i < 3; i++) {
