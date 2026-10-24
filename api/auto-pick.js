@@ -61,25 +61,27 @@ export default async function handler(request) {
 }
 
 const trace = [];
+const MIN_RANK = 120000;
 async function checkTempo(c, lo, hi) {
   try {
     const key = 'songsync:bpm:' + normQuery(c.title + '|' + c.artist);
     let bpm = null, title = c.title, artist = c.artist, dur = null;
     const cached = await cacheGet(key);
-    if (cached && cached.bpm) bpm = cached.bpm;
+    if (cached && cached.bpm) { bpm = cached.bpm; if (typeof cached.rank === 'number' && cached.rank < MIN_RANK) return null; }
     else {
       const res = await fetch('https://api.deezer.com/search?limit=5&q=' + encodeURIComponent(c.artist + ' ' + c.title));
       if (!res.ok) return null;
       const data = await res.json();
       const want = norm(c.artist), wantT = norm(c.title);
       const hit = (data.data || []).find(r => r.artist && norm(r.artist.name) === want && norm(r.title_short || r.title).startsWith(wantT));
+      if (hit && (hit.rank || 0) < MIN_RANK) { await cacheSet(key, { bpm: null, rank: hit.rank || 0 }, 2592000); return null; }
       if (!hit) { trace.push(c.artist + ' / ' + c.title + ': no deezer match (' + (data.error ? JSON.stringify(data.error).slice(0, 80) : (data.data || []).length + ' rows') + ')'); return null; }
       const tr = await fetch('https://api.deezer.com/track/' + hit.id);
       const t = tr.ok ? await tr.json() : {};
       bpm = parseFloat(t.bpm) > 0 ? Math.round(parseFloat(t.bpm) * 10) / 10 : null;
       if (!bpm) { trace.push(c.artist + ' / ' + c.title + ': no bpm'); return null; }
-      await cacheSet(key, { bpm, key: null, source: 'deezer' }, 0);
-      title = hit.title_short || c.title; artist = hit.artist.name; dur = hit.duration || null;
+      await cacheSet(key, { bpm, key: null, source: 'deezer', rank: hit.rank || 0 }, 0);
+      title = (hit.title_short || c.title).replace(/\s*\(.*?\)|\s*\[.*?\]/g, '').trim(); artist = hit.artist.name; dur = hit.duration || null;
     }
     for (const f of [1, 2, 0.5]) {
       const v = bpm * f;
