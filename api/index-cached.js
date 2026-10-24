@@ -35,7 +35,7 @@ export default async function handler(request) {
   const todo = [...songs.entries()].filter(([n]) => !indexed.has(n));
   let done = 0;
   // fast pass: Deezer facts, six songs at a time
-  for (let k = 0; k < todo.length && Date.now() - started < 15000; k += 6) {
+  for (let k = 0; k < todo.length && Date.now() - started < 7000; k += 6) {
     const wave = todo.slice(k, k + 6);
     const metas = await Promise.all(wave.map(([n, q]) => describe(q)));
     for (let w = 0; w < wave.length; w++) {
@@ -52,7 +52,7 @@ export default async function handler(request) {
   if (todo.length - done <= 0) {
     const need = (await redis(url, auth, ['SRANDMEMBER', 'songsync:needtags', '12'])) || [];
     for (const entry of need) {
-      if (Date.now() - started > 18000) break;
+      if (Date.now() - started > 9000) break;
       const cut = entry.indexOf('|');
       const artist = entry.slice(cut + 1);
       const tags = await artistTags(artist);
