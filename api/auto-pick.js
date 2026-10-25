@@ -19,6 +19,7 @@ export default async function handler(request) {
   const skip = new Set((p.get('skip') || '').split(',').map(s => s.trim()).filter(Boolean));
   const kind = p.get('kind') === 'inst' ? 'instrumental' : (p.get('kind') === 'aca' ? 'acapella' : null);
   const cachedOnly = p.get('cached') === '1' && kind;
+  const want = Math.min(12, Math.max(1, parseInt(p.get('n'), 10) || 3));
   if (!tag || !(bpm > 40)) return reply({ error: 'need a genre and a bpm', picks: [] }, 400);
 
   if (cachedOnly) {
@@ -32,7 +33,7 @@ export default async function handler(request) {
     for (const m of shuffle(fits)) {
       const f = [1, 2, 0.5].find(x => m.bpm * x >= lo && m.bpm * x <= hi);
       if (f) picks.push({ title: m.title, artist: m.artist, bpm: m.bpm, fold: f, query: m.query });
-      if (picks.length >= 3) break;
+      if (picks.length >= want) break;
     }
     return reply({ picks, cache: { indexedSongs: metas.length, savedForSide: have.size, fitGenre: fits.length }, ms: Date.now() - started,
       error: picks.length ? undefined : (fits.length ? 'no saved songs in that tempo window' : 'no saved songs in that genre and decade yet') });
@@ -182,6 +183,7 @@ const SYN = {
 };
 function tagMatches(m, tag) {
   const t = tag.toLowerCase().trim();
+  if (t === 'any') return true;
   const tags = (m.tags || []).map(x => x.toLowerCase());
   const genres = (m.genres || []).map(x => x.toLowerCase());
   const words = t.split(/[\s,/&]+/).filter(Boolean);
