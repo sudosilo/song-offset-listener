@@ -146,6 +146,7 @@
       <button id="nudgeForward">+ 0.5s</button>
     </div>
     <div class="artist" id="songArtist"></div>
+    <div class="artist" id="songBpm" style="font-weight:700;"></div>
     <div class="offset" id="songOffset"></div>
     <div class="label">matched offset into track</div>
     <div class="label" id="videoInfo" style="margin-top:8px;"></div>
@@ -300,6 +301,7 @@ async function detectBpmFromBlob(blob) {
 
 async function startListen() {
   resultEl.style.display = 'none';
+  document.getElementById("songBpm").textContent = "";
   listenBtn.disabled = true;
   statusEl.textContent = 'Requesting microphone...';
 
@@ -358,6 +360,7 @@ async function startListen() {
       }
 
       activateMatch(data, true);
+      document.getElementById("songBpm").textContent = localBpm ? localBpm + " BPM" : "BPM not detected";
       awaitingOwnRecognition = false;
       statusEl.textContent = '';
     } catch (err) {
@@ -481,6 +484,7 @@ function anchorIsStale(data) {
 }
 
 function activateMatch(data, isMine, skipTriggerSync) {
+  if (!isMine) document.getElementById("songBpm").textContent = data.bpm ? data.bpm + " BPM" : "";
   if (!isMine && anchorIsStale(data)) {
     lastSeenAnchorKey = matchKey(data);
     return;
