@@ -3,7 +3,7 @@ import { cacheGet, cacheSet } from '../lib/search-cache.js';
 export const config = { runtime: 'edge' };
 
 // Relay from Smash Director to Smash Bender. Frankfurt cannot fetch from YouTube, so a phone does it:
-//   POST {action:'queue', project, song_one, song_two, seconds, inst, aca}   queues a job, returns {id}
+//   POST {action:'queue', project, song_one, song_two, seconds, music_start, voice_start, inst, aca}   queues a job, returns {id}
 //   GET  ?id=ID                                                              the job's status
 //   GET  ?next=1                                                             a phone takes the next job
 //   POST {action:'result', id, ok, job, project, open, error}                the phone reports back
@@ -29,7 +29,8 @@ async function run(request) {
       if (!VID.test(b.inst || '') || !VID.test(b.aca || '')) return reply({ error: 'need both video ids' }, 400);
       const id = Math.random().toString(36).slice(2, 10);
       const job = { id, status: 'queued', project: txt(b.project, 60), song_one: txt(b.song_one, 120), song_two: txt(b.song_two, 120),
-        seconds: Math.max(10, Math.min(240, parseInt(b.seconds, 10) || 45)), inst: b.inst, aca: b.aca, at: Date.now() };
+        seconds: Math.max(10, Math.min(240, parseInt(b.seconds, 10) || 45)), inst: b.inst, aca: b.aca, at: Date.now(),
+        music_start: Math.max(0, Math.round((Number(b.music_start) || 0) * 100) / 100), voice_start: Math.max(0, Math.round((Number(b.voice_start) || 0) * 100) / 100) };
       await cacheSet('songsync:bender:' + id, job, DAY2);
       await r(['RPUSH', 'songsync:benderq', id]);
       return reply({ id, waiting: (await r(['LLEN', 'songsync:benderq'])) || 1 });
