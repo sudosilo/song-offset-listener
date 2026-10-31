@@ -8,6 +8,6 @@ Live at offset-listener.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-10-25, v2026.10.25. Added loudness maps for instrumentals, made on the phones. Saved song picks now accept any genre.
+Latest change. 2026-10-30, v2026.10.30. Added a Smash Bender relay queue: the app queues a job, a phone takes it and reports back. The queue also carries where each clip starts in its song.
 
 Full history is in CHANGELOG.md.

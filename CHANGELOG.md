@@ -1,4 +1,8 @@
-2026-10-25, v2026.10.25. Added loudness maps for instrumentals, made on the phones. Saved song picks now accept any genre.
+Offset Listener changelog
+
+2026-10-30, v2026.10.30. Added a Smash Bender relay queue: the app queues a job, a phone takes it and reports back. The queue also carries where each clip starts in its song.
+
+2026-10-28, v2026.10.28. The BPM now shows under the song name.
 
 2026-10-24, v2026.10.24. Added artist and album info routes with permanent caching. Added auto pick, which chooses songs by genre, decade, and tempo for Autosmash. Added a saved song index, so picks need no video search. A visitor can use their own search key.
 
