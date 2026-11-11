@@ -305,80 +305,119 @@ async function detectBpmFromBlob(blob) {
   return Math.round(bpm);
 }
 
+/* BLUE PHONE: Listen records with the browser recorder first; if that clip comes back empty or
+   AudD cannot fingerprint it, it records again as plain WAV straight from the mic and retries. */
+function recordWebmClip(stream) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
+    recorder.start(1000);
+    setTimeout(() => { try { recorder.stop(); } catch (e) { resolve(new Blob(chunks)); } }, RECORD_MS);
+  });
+}
+async function recordWavClip() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  try { if (ctx.state === 'suspended') await ctx.resume(); } catch (e) {}
+  const src = ctx.createMediaStreamSource(stream);
+  const node = ctx.createScriptProcessor(4096, 1, 1);
+  const sink = ctx.createGain(); sink.gain.value = 0;
+  const parts = []; let total = 0;
+  node.onaudioprocess = (e) => { const d = e.inputBuffer.getChannelData(0); parts.push(new Float32Array(d)); total += d.length; };
+  src.connect(node); node.connect(sink); sink.connect(ctx.destination);
+  const startedAt = now();
+  await sleep(RECORD_MS);
+  try { node.disconnect(); } catch (e) {}
+  stream.getTracks().forEach(t => t.stop());
+  const rate = ctx.sampleRate;
+  try { ctx.close(); } catch (e) {}
+  const pcm = new Int16Array(total);
+  let o = 0;
+  for (const p of parts) for (let i = 0; i < p.length; i++) { const v = Math.max(-1, Math.min(1, p[i])); pcm[o++] = v < 0 ? v * 0x8000 : v * 0x7fff; }
+  const buf = new ArrayBuffer(44 + pcm.length * 2), dv = new DataView(buf);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  str(36, 'data'); dv.setUint32(40, pcm.length * 2, true);
+  new Int16Array(buf, 44).set(pcm);
+  return { blob: new Blob([buf], { type: 'audio/wav' }), capturedAt: startedAt, ms: Math.round(total / rate * 1000) };
+}
+async function sendClip(blob, capturedAt, ms, name) {
+  const form = new FormData();
+  form.append('audio', blob, name);
+  form.append('capturedAt', String(capturedAt));
+  form.append('clipDurationMs', String(ms));
+  const loc = await getMyLocation();
+  if (loc) { form.append('lat', String(loc.lat)); form.append('lng', String(loc.lng)); }
+  const localBpm = await detectBpmFromBlob(blob);
+  if (localBpm) form.append('localBpm', String(localBpm));
+  const res = await fetch('/api/recognize', { method: 'POST', body: form });
+  const data = await res.json();
+  return { data, localBpm };
+}
 async function startListen() {
   resultEl.style.display = 'none';
   document.getElementById("songBpm").textContent = "";
   listenBtn.disabled = true;
   statusEl.textContent = 'Requesting microphone...';
+  if (typeof CTL !== 'undefined' && CTL.cal) earEnd();
 
   const activePlayer = (syncLive && syncPlayer) ? syncPlayer : (broadcasting && hostPlayer) ? hostPlayer : null;
   let wasMutedByListen = false;
-  if (activePlayer && !activePlayer.isMuted()) {
-    activePlayer.mute();
-    wasMutedByListen = true;
-  }
+  if (activePlayer && !activePlayer.isMuted()) { activePlayer.mute(); wasMutedByListen = true; }
+  const restore = () => { if (wasMutedByListen && activePlayer) activePlayer.unMute(); };
 
-  let stream;
+  awaitingOwnRecognition = true;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (err) {
-    if (wasMutedByListen && activePlayer) activePlayer.unMute();
-    statusEl.textContent = 'Microphone permission denied or unavailable.';
-    listenBtn.disabled = false;
-    return;
-  }
-
-  const chunks = [];
-  const captureStartedAt = now();
-  const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-
-  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-
-  recorder.onstop = async () => {
-    stream.getTracks().forEach(t => t.stop());
-    if (wasMutedByListen && activePlayer) activePlayer.unMute();
-    statusEl.textContent = 'Identifying...';
-    const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-
-    try {
-      const form = new FormData();
-      form.append('audio', blob, 'clip.webm');
-      form.append('capturedAt', String(captureStartedAt));
-      form.append('clipDurationMs', String(RECORD_MS));
-      const loc = await getMyLocation();
-      if (loc) {
-        form.append('lat', String(loc.lat));
-        form.append('lng', String(loc.lng));
+    let result = null;
+    let stream = null;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (err) { stream = null; }
+    if (stream) {
+      statusEl.textContent = 'Listening...';
+      const capturedAt = now();
+      const blob = await recordWebmClip(stream);
+      stream.getTracks().forEach(t => t.stop());
+      if (blob.size > 4000) {
+        statusEl.textContent = 'Identifying...';
+        result = await sendClip(blob, capturedAt, RECORD_MS, 'clip.webm');
       }
-      const localBpm = await detectBpmFromBlob(blob);
-      if (localBpm) form.append('localBpm', String(localBpm));
-
-      awaitingOwnRecognition = true;
-      const res = await fetch('/api/recognize', { method: 'POST', body: form });
-      const data = await res.json();
-
-      if (data.error) {
-        awaitingOwnRecognition = false;
-        statusEl.textContent = 'No match: ' + data.error;
+    }
+    const bad = !result || (result.data && result.data.error && /fingerprint|audio file|no audio/i.test(result.data.error));
+    if (bad) {
+      statusEl.textContent = 'Listening again...';
+      let wav;
+      try { wav = await recordWavClip(); } catch (err) {
+        restore(); awaitingOwnRecognition = false;
+        statusEl.textContent = 'Microphone permission denied or unavailable.';
         listenBtn.disabled = false;
         return;
       }
-
-      activateMatch(data, true);
-      document.getElementById("songBpm").textContent = localBpm ? localBpm + " BPM" : "BPM not detected";
-      awaitingOwnRecognition = false;
-      statusEl.textContent = '';
-    } catch (err) {
-      awaitingOwnRecognition = false;
-      statusEl.textContent = 'Request failed. Check connection.';
+      statusEl.textContent = 'Identifying...';
+      result = await sendClip(wav.blob, wav.capturedAt, wav.ms, 'clip.wav');
+      logPlayEvent({ event: 'listen_wav_fallback', title: result.data && result.data.title || null, videoId: null, nudgeMs, errorMessage: result.data && result.data.error || null });
     }
-    listenBtn.disabled = false;
-  };
-
-  recorder.start();
-  statusEl.textContent = 'Listening...';
-  setTimeout(() => recorder.stop(), RECORD_MS);
+    restore();
+    const data = result.data;
+    if (data.error) {
+      awaitingOwnRecognition = false;
+      statusEl.textContent = /fingerprint/i.test(data.error) ? 'No match: could not hear a song clearly, try again closer to the speaker.' : 'No match: ' + data.error;
+      listenBtn.disabled = false;
+      return;
+    }
+    activateMatch(data, true);
+    document.getElementById("songBpm").textContent = result.localBpm ? result.localBpm + " BPM" : "BPM not detected";
+    awaitingOwnRecognition = false;
+    statusEl.textContent = '';
+  } catch (err) {
+    restore();
+    awaitingOwnRecognition = false;
+    statusEl.textContent = 'Request failed. Check connection.';
+  }
+  listenBtn.disabled = false;
 }
 
 function formatOffset(seconds) {
