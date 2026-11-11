@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- BLUE PHONE: Halvard Zone Director, ear lock sync pass -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -150,6 +151,8 @@
   .reqRow .rs { font-size: 10px; letter-spacing: 1px; color: var(--ink-faint); }
   .reqRow .rs.on { color: var(--ok); }
   .reqRow button { flex: none; }
+  .lockDot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-faint); }
+  .lockDot.on { background: #1a5fd0; box-shadow: 0 0 0 3px rgba(26,95,208,.2); }
   #gateStatus { margin-top: 14px; font-size: 12px; color: var(--accent); min-height: 16px; }
 </style>
 </head>
@@ -291,6 +294,8 @@
   <div class="toggleRow"><span>Output state</span><span class="mono" id="audioState">STANDBY</span></div>
   <div class="toggleRow"><span>Output delay</span><span style="display:flex;gap:6px;align-items:center;">
     <button class="mono delayKey" data-d="-100">-</button><span class="mono" id="delayVal" style="min-width:64px;text-align:center;">+0 ms</span><button class="mono delayKey" data-d="100">+</button><button class="mono delayKey" data-d="0">RST</button></span></div>
+  <div class="toggleRow"><span>Ear lock</span><input type="checkbox" id="earToggle" checked></div>
+  <div class="toggleRow"><span>Lock</span><span class="mono" style="display:flex;gap:7px;align-items:center;font-size:11px;letter-spacing:1px;color:#1a4fa0;"><span id="lockDot" class="lockDot"></span><span id="lockState">NONE</span></span></div>
   <div class="toggleRow"><span>Resync now</span><span style="display:flex;gap:8px;align-items:center;"><span class="mono" id="syncState" style="font-size:11px;letter-spacing:1px;color:var(--ink-soft);">IDLE</span><button id="resyncBtn" class="mono" style="padding:6px 12px;border-radius:8px;border:1px solid var(--chassis-edge);background:var(--key);color:var(--ink);">SYNC</button></span></div>
 </div>
 
@@ -410,6 +415,7 @@ async function connect() {
   analyser.fftSize = 512;
   analyser.smoothingTimeConstant = 0.75;
   src.connect(analyser);
+  earAttach(src);
   freqData = new Uint8Array(analyser.frequencyBinCount);
   timeData = new Uint8Array(analyser.fftSize);
   $('gate').classList.add('hidden');
@@ -513,6 +519,7 @@ async function identifyOnce() {
   $('lcd').classList.remove('syncing');
 
   if (!data || data.error || typeof data.offsetSeconds !== 'number') {
+    CTL.hold = false;
     syncStatus(current ? 'HELD ' + hhmm() : 'NO SIGNAL');
     if (current) {
       setLink('ok', 'LINKED');
@@ -555,8 +562,10 @@ async function identifyOnce() {
       current.durationSeconds = position() + 20;
     }
     renderTrack();
-    syncAudio(true);
     syncStatus('ALIGNED ' + hhmm());
+    setNominal(false);
+    if (CTL.hold) { CTL.hold = false; if (audioOn) startCal(6.5); }
+    ctlTick();
     scheduleFromTrack();
     return;
   }
@@ -567,7 +576,10 @@ async function identifyOnce() {
   syncStatus('ALIGNED ' + hhmm());
   current = fresh;
   renderTrack();
-  syncAudio(true);
+  primeSong(fresh);
+  CTL.hold = false;
+  if (audioOn) startCal(10);
+  ctlTick();
   postVenuePlay(fresh).then(() => fetchVenue(fresh));
   log('CUE', 'loaded "' + fresh.title + '" to all zones');
   scheduleFromTrack();
@@ -637,7 +649,7 @@ function renderAudioKey() {
   $('pauseBtn').innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
   $('pauseBtn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
   $('playLabel').textContent = playing ? 'PAUSE' : 'PLAY';
-  $('audioState').textContent = outputMode === 'off' ? 'NO AUDIO' : playing ? 'LIVE ON ' + OUT_NAME[outputMode] : (audioOn ? 'STARTING' : 'STANDBY');
+  $('audioState').textContent = outputMode === 'off' ? 'NO AUDIO' : CTL.cal ? 'TUNING BY EAR' : playing ? 'LIVE ON ' + OUT_NAME[outputMode] : (audioOn ? 'STARTING' : 'STANDBY');
   $('zoneSlot').classList.toggle('on', audioOn && (playerState === 1 || playerState === 3));
   $('outBtn').innerHTML = ICON_OUT[outputMode];
   $('outLabel').textContent = OUT_NAME[outputMode];
@@ -648,6 +660,7 @@ function startPlayback() {
   if (outputMode === 'off') { log('PLAY', 'output is set to no audio, pick speaker or headset'); return; }
   audioOn = true;
   if (current && current.videoId && playerReady) {
+    if (!current.ear && !(CTL.lastAud.vid === current.videoId && perfS() - CTL.lastAud.at < 12)) startCal(10);
     syncAudio(true);
     log('PLAY', OUT_NAME[outputMode].toLowerCase() + ' output live, locked to ' + current.title);
   } else {
@@ -669,6 +682,7 @@ function setOutput(mode) {
   try { localStorage.setItem('halvard:output', mode); } catch (e) {}
   delayMs = loadDelay();
   renderDelay();
+  applyLine();
   if (mode === 'off') stopPlayback(null);
   else if (audioOn) syncAudio(true);
   log('OUTPUT', OUT_NAME[mode].toLowerCase() + (mode === 'off' ? ', handset stays silent' : ', delay ' + (delayMs >= 0 ? '+' : '') + delayMs + ' ms'));
@@ -684,7 +698,14 @@ $('reqBtn').addEventListener('click', () => {
 $('resyncBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   if (!stream) { syncStatus('CONNECT FIRST'); return; }
-  if (audioOn && playerState === 1) syncAudio(true);
+  if (audioOn && earOn() && current && current.videoId) {
+    CTL.hold = true;
+    ctlTick();
+    log('SYNC', 'hearing the room, handset copy returns in a moment', 12000);
+    if (busy) { syncStatus('QUEUED'); return; }
+    identify();
+    return;
+  }
   if (busy) { pendingResync = true; syncStatus('QUEUED'); return; }
   identify();
 });
@@ -726,6 +747,7 @@ document.querySelectorAll('.delayKey').forEach(b => b.addEventListener('click', 
   delayMs = d === 0 ? 0 : delayMs + d;
   try { localStorage.setItem('halvard:delay:' + outputMode, String(delayMs)); } catch (e) {}
   renderDelay();
+  applyLine();
   syncAudio(true);
 }));
 
@@ -749,32 +771,350 @@ function ensurePlayer() {
     });
   });
 }
-function targetPos() { return position() + delayMs / 1000; }
-function syncAudio(force) {
-  if (!playerReady || !player || typeof player.seekTo !== 'function') return;
-  if (!audioOn || outputMode === 'off' || !current || !current.videoId) { try { player.pauseVideo(); } catch (e) {} return; }
-  const t = Math.max(0, targetPos());
-  if (current.durationSeconds && t > current.durationSeconds + 1) { try { player.pauseVideo(); } catch (e) {} return; }
-  try {
-    if (loadedVideo !== current.videoId) {
-      loadedVideo = current.videoId;
-      player.unMute();
-      player.loadVideoById(current.videoId, t);
-      setTimeout(() => {
-        try { if (audioOn) { player.seekTo(Math.max(0, targetPos()), true); player.playVideo(); } } catch (err) {}
-      }, 1200);
-      return;
-    }
-    const cur = player.getCurrentTime();
-    const state = player.getPlayerState();
-    if (force || state !== 1 || Math.abs(cur - t) > 0.6) {
-      player.seekTo(t, true);
-      player.playVideo();
-      player.unMute();
-    }
-  } catch (err) {}
+/* BLUE PHONE: ear lock. The handset plays its copy a few seconds late on purpose, hears that copy
+   through its own mic, matches it against what the room played moments earlier, and moves the copy
+   by the measured gap. A control loop then holds the player on that line. */
+const EAR_RING_SEC = 44, EAR_HOP = 0.01, EAR_WIN = 4, EAR_ZMIN = 7, EAR_LOOKBACK = 28;
+const EAR_BANDS = [
+  { type: 'lowpass', f: 200 },
+  { type: 'bandpass', f: 1000, q: 0.7 },
+  { type: 'highpass', f: 4000 }
+];
+const EAR = { ring: null, total: 0, sr: 0, cands: [], base: null, node: null, sink: null };
+function perfS() { return performance.now() / 1000; }
+
+function earAttach(src) {
+  EAR.sr = audioCtx.sampleRate;
+  EAR.ring = new Float32Array(Math.round(EAR.sr * EAR_RING_SEC));
+  EAR.total = 0; EAR.cands = []; EAR.base = null;
+  EAR.node = audioCtx.createScriptProcessor(4096, 1, 1);
+  EAR.sink = audioCtx.createGain();
+  EAR.sink.gain.value = 0;
+  src.connect(EAR.node); EAR.node.connect(EAR.sink); EAR.sink.connect(audioCtx.destination);
+  EAR.node.onaudioprocess = (e) => {
+    const d = e.inputBuffer.getChannelData(0), L = EAR.ring.length;
+    let w = EAR.total % L;
+    for (let i = 0; i < d.length; i++) { EAR.ring[w] = d[i]; w++; if (w === L) w = 0; }
+    EAR.total += d.length;
+    const at = perfS();
+    EAR.cands.push({ at, c: at - EAR.total / EAR.sr });
+    while (EAR.cands.length && at - EAR.cands[0].at > 30) EAR.cands.shift();
+    let m = Infinity;
+    for (const x of EAR.cands) if (x.c < m) m = x.c;
+    EAR.base = m;
+  };
 }
-setInterval(() => syncAudio(false), 3000);
+function earSlice(fromPerf, toPerf) {
+  const L = EAR.ring.length;
+  const oldest = Math.max(0, EAR.total - L);
+  const a = Math.max(oldest, Math.round((fromPerf - EAR.base) * EAR.sr));
+  const b = Math.min(EAR.total, Math.round((toPerf - EAR.base) * EAR.sr));
+  if (b - a < EAR.sr) return null;
+  const out = new Float32Array(b - a);
+  let r = a % L;
+  for (let i = 0; i < out.length; i++) { out[i] = EAR.ring[r]; r++; if (r === L) r = 0; }
+  return { data: out, startPerf: EAR.base + a / EAR.sr };
+}
+async function earFeatures(data, sr) {
+  const hop = Math.round(sr * EAR_HOP), out = [];
+  for (const b of EAR_BANDS) {
+    const off = new OfflineAudioContext(1, data.length, sr);
+    const buf = off.createBuffer(1, data.length, sr);
+    buf.getChannelData(0).set(data);
+    const s = off.createBufferSource(); s.buffer = buf;
+    const f = off.createBiquadFilter(); f.type = b.type; f.frequency.value = b.f; if (b.q) f.Q.value = b.q;
+    s.connect(f); f.connect(off.destination); s.start(0);
+    const x = (await off.startRendering()).getChannelData(0);
+    const n = Math.floor(x.length / hop), env = new Float32Array(n), on = new Float32Array(n);
+    for (let i = 0; i < n; i++) { let sum = 0; for (let j = i * hop; j < (i + 1) * hop; j++) sum += x[j] * x[j]; env[i] = Math.log(1e-7 + Math.sqrt(sum / hop)); }
+    for (let i = 1; i < n; i++) on[i] = Math.max(0, env[i] - env[i - 1]);
+    let mean = 0; for (let i = 0; i < n; i++) mean += on[i]; mean /= Math.max(1, n);
+    let v = 0; for (let i = 0; i < n; i++) v += (on[i] - mean) * (on[i] - mean);
+    const sd = Math.sqrt(v / Math.max(1, n)) || 1;
+    for (let i = 0; i < n; i++) on[i] = (on[i] - mean) / sd;
+    out.push(on);
+  }
+  return out;
+}
+function earRms(data, a, b) {
+  a = Math.max(0, a); b = Math.min(data.length, b);
+  if (b - a < 100) return 0;
+  let s = 0; for (let i = a; i < b; i++) s += data[i] * data[i];
+  return Math.sqrt(s / (b - a));
+}
+/* feats: band onset arrays for one stretch of mic audio. a0: first frame of the clip that holds the
+   handset copy. M: clip length in frames. refLo..refHi: frames that hold the room alone.
+   Returns peaks of the match between the clip and earlier room audio, by lag in frames. */
+function earMatch(feats, a0, M, refLo, refHi, kMin, kMax) {
+  const need = Math.floor(M * 0.6);
+  const ks = [], cs = [];
+  for (let k = kMin; k <= kMax; k++) {
+    const i0 = Math.max(0, refLo + k - a0), i1 = Math.min(M, refHi + k - a0);
+    if (i1 - i0 < need) continue;
+    let s = 0;
+    for (const on of feats) for (let i = i0; i < i1; i++) s += on[a0 + i] * on[a0 + i - k];
+    ks.push(k); cs.push(s / ((i1 - i0) * feats.length));
+  }
+  if (cs.length < 50) return [];
+  const sorted = cs.slice().sort((x, y) => x - y), med = sorted[Math.floor(cs.length / 2)];
+  const dev = cs.map(x => Math.abs(x - med)).sort((x, y) => x - y);
+  const mad = dev[Math.floor(cs.length / 2)] * 1.4826 + 1e-9;
+  const peaks = [];
+  for (let j = 1; j < cs.length - 1; j++) {
+    if (ks[j + 1] - ks[j - 1] !== 2) continue;
+    if (cs[j] > cs[j - 1] && cs[j] >= cs[j + 1]) {
+      const den = cs[j - 1] - 2 * cs[j] + cs[j + 1];
+      const d = den !== 0 ? 0.5 * (cs[j - 1] - cs[j + 1]) / den : 0;
+      peaks.push({ k: ks[j] + d, z: (cs[j] - med) / mad });
+    }
+  }
+  peaks.sort((p, q) => q.z - p.z);
+  const picked = [];
+  for (const p of peaks) { if (picked.length >= 6) break; if (picked.every(q => Math.abs(q.k - p.k) >= 8)) picked.push(p); }
+  return picked;
+}
+
+/* player time tracking: every fresh time report from the player becomes a sample of
+   (video seconds minus clock seconds). Reports only ever arrive late, so the high end is the truth. */
+const PT = { samples: [], lastV: null, rate: 1 };
+function ptReset() { PT.samples = []; PT.lastV = null; }
+function ptSample(v, w) {
+  if (PT.rate !== 1 || playerState !== 1 || typeof v !== 'number' || v === PT.lastV) return;
+  PT.lastV = v;
+  PT.samples.push({ w, o: v - w });
+  while (PT.samples.length && w - PT.samples[0].w > 4) PT.samples.shift();
+}
+function ptLine() {
+  const n = PT.samples.length;
+  if (n < 3 || PT.samples[n - 1].w - PT.samples[0].w < 0.6) return null;
+  const s = PT.samples.map(x => x.o).sort((a, b) => a - b);
+  return s[Math.floor(0.8 * (n - 1))];
+}
+window.addEventListener('message', (e) => {
+  if (!/^https:\/\/www\.youtube(-nocookie)?\.com$/.test(e.origin)) return;
+  let d = e.data;
+  if (typeof d === 'string') { try { d = JSON.parse(d); } catch (err) { return; } }
+  if (d && d.info && typeof d.info.currentTime === 'number') ptSample(d.info.currentTime, perfS());
+});
+setInterval(() => {
+  try { if (playerReady && player && playerState === 1 && typeof player.getCurrentTime === 'function') ptSample(player.getCurrentTime(), perfS()); } catch (e) {}
+}, 100);
+
+function lsNum(k, d) { try { const v = parseFloat(localStorage.getItem(k)); return isFinite(v) ? v : d; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
+function median(list) { const s = list.slice().sort((a, b) => a - b), m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+function baseList() { try { const a = JSON.parse(localStorage.getItem('halvard:earbase') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function baseMs() { const a = baseList(); return a.length ? median(a) : 0; }
+function basePush(ms) { const a = baseList(); a.unshift(Math.round(ms)); try { localStorage.setItem('halvard:earbase', JSON.stringify(a.slice(0, 15))); } catch (e) {} }
+
+const CTL = { oT: null, phase: 'idle', phaseAt: 0, slewTimer: null, seekLat: lsNum('halvard:seeklat', 0.35), seekPending: false, rateOk: null, cal: null, hold: false, lastAud: { vid: null, at: -1e9 }, err: null };
+function earOn() { return $('earToggle').checked && outputMode === 'speaker' && !!EAR.ring && EAR.base !== null; }
+function applyLine() {
+  if (!current) return;
+  CTL.oT = current.nomO + delayMs / 1000 + (current.corr || 0);
+  renderLock();
+}
+function setNominal(fresh) {
+  const nom = position() - perfS();
+  if (fresh) { current.noms = [nom]; current.nomO = nom; }
+  else if (!current.ear) { current.noms.push(nom); current.nomO = current.noms.reduce((a, b) => a + b, 0) / current.noms.length; }
+  applyLine();
+}
+function targetPos() { return CTL.oT === null ? position() : CTL.oT + perfS(); }
+function fmtCorr(sec) { return (sec >= 0 ? '+' : '') + sec.toFixed(2) + ' S'; }
+function renderLock() {
+  let t = 'NONE';
+  if (CTL.cal) t = CTL.cal.stage === 'hush' ? 'HEARING ROOM' : 'TUNING BY EAR';
+  else if (current && current.ear) t = 'BY EAR ' + fmtCorr(current.corr);
+  else if (current && current.corrSrc === 'learned') t = 'LEARNED ' + fmtCorr(current.corr);
+  else if (current && current.corrSrc === 'base') t = 'HANDSET AVG ' + fmtCorr(current.corr);
+  else if (current) t = 'ESTIMATE';
+  $('lockState').textContent = t;
+  $('lockDot').classList.toggle('on', !!(current && current.ear && !CTL.cal));
+}
+function earLog(obj) {
+  let lat = {};
+  try { lat = { baseLatency: audioCtx ? audioCtx.baseLatency : null, outputLatency: audioCtx ? audioCtx.outputLatency : null }; } catch (e) {}
+  try {
+    fetch('/api/sync-samples', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(Object.assign({ source: 'zone-director', deviceId: deviceId(), wall: Date.now(), sr: EAR.sr, title: current ? current.title : null, artist: current ? current.artist : null,
+        videoId: current ? current.videoId : null, output: outputMode, delayMs, seekLat: +CTL.seekLat.toFixed(3), rateOk: CTL.rateOk, ua: navigator.userAgent.slice(0, 120) }, lat, obj)) }).catch(() => {});
+  } catch (e) {}
+}
+async function fetchLearned(videoId) {
+  try {
+    const c = new AbortController();
+    setTimeout(() => c.abort(), 2500);
+    const d = await (await fetch('/api/video-offset?v=' + encodeURIComponent(videoId), { signal: c.signal, cache: 'no-store' })).json();
+    return d && typeof d.offsetMs === 'number' ? d : null;
+  } catch (e) { return null; }
+}
+function primeSong(song) {
+  song.ear = false;
+  const b = baseMs();
+  song.corr = b / 1000;
+  song.corrSrc = baseList().length ? 'base' : 'none';
+  setNominal(true);
+  if (!song.videoId) return;
+  fetchLearned(song.videoId).then(d => {
+    if (!d || current !== song || song.ear) return;
+    song.corr = d.offsetMs / 1000; song.corrSrc = 'learned'; song.learnedMs = d.offsetMs;
+    applyLine();
+  });
+}
+
+function startCal(delta) {
+  if (!current || !current.videoId || !earOn() || CTL.cal) return;
+  const now = perfS();
+  const sameAudible = CTL.lastAud.vid === current.videoId;
+  if (sameAudible && playerState === 1 && !CTL.hold) return;
+  const refFrom = sameAudible ? CTL.lastAud.at + 0.3 : -1e9;
+  CTL.cal = { stage: 'hush', delta, started: now, refFrom, hushUntil: sameAudible ? refFrom + delta + 1.7 : now, audibleFrom: null, t0: null };
+  current.ear = false;
+  renderLock(); renderAudioKey();
+}
+function endCal() {
+  CTL.cal = null;
+  try { player.setVolume(100); } catch (e) {}
+  renderLock(); renderAudioKey();
+}
+async function calCompute() {
+  const cal = CTL.cal, song = current;
+  cal.stage = 'compute';
+  const report = { kind: 'ear_cal', delta: cal.delta, result: 'fail' };
+  try {
+    const oCal = cal.oLine;
+    const seg = earSlice(cal.t0 - EAR_LOOKBACK, cal.t0 + EAR_WIN);
+    if (!seg) throw new Error('no mic audio');
+    const feats = await earFeatures(seg.data, EAR.sr);
+    const fr = (t) => Math.round((t - seg.startPerf) / EAR_HOP);
+    const a0 = fr(cal.t0), M = Math.round(EAR_WIN / EAR_HOP);
+    const refLo = Math.max(1, fr(cal.refFrom)), refHi = Math.min(a0, fr(cal.audibleFrom));
+    const peaks = earMatch(feats, a0, M, refLo, refHi, 60, a0);
+    const kExp = (CTL.oT - delayMs / 1000 - oCal) / EAR_HOP;
+    const sr = EAR.sr, s0 = Math.round((cal.t0 - seg.startPerf) * sr);
+    const lvlClip = earRms(seg.data, s0, Math.round(s0 + EAR_WIN * sr));
+    const lvlRoom = earRms(seg.data, Math.round(Math.max(refLo * EAR_HOP * sr, (refHi * EAR_HOP - EAR_WIN) * sr)), Math.round(refHi * EAR_HOP * sr));
+    report.peaks = peaks.slice(0, 5).map(p => ({ lagMs: Math.round(p.k * EAR_HOP * 1000), z: +p.z.toFixed(1) }));
+    report.expectedMs = Math.round(kExp * EAR_HOP * 1000);
+    report.rise = lvlRoom > 0 ? +(lvlClip / lvlRoom).toFixed(2) : null;
+    report.refSec = +((refHi - refLo) * EAR_HOP).toFixed(1);
+    if (!peaks.length || peaks[0].z < EAR_ZMIN) throw new Error('no clear match');
+    if (!(lvlRoom > 0) || lvlClip / lvlRoom < 1.15) throw new Error('handset copy not heard by the mic');
+    const strong = peaks.filter(p => p.z >= Math.max(EAR_ZMIN, 0.75 * peaks[0].z));
+    strong.sort((p, q) => Math.abs(p.k - kExp) - Math.abs(q.k - kExp));
+    const lag = strong[0].k * EAR_HOP;
+    const corr = oCal + lag - song.nomO;
+    if (Math.abs(corr) > 28) throw new Error('gap too large');
+    if (current !== song || CTL.cal !== cal) return;
+    report.result = 'locked';
+    report.lagMs = Math.round(lag * 1000);
+    report.fixMs = Math.round((lag - kExp * EAR_HOP) * 1000);
+    report.corrMs = Math.round(corr * 1000);
+    report.priorMs = Math.round((song.corr || 0) * 1000);
+    report.priorSrc = song.corrSrc;
+    report.z = +strong[0].z.toFixed(1);
+    if (lsNum('halvard:earfirst', 0) === 0) {
+      lsSet('halvard:earfirst', 1);
+      if (delayMs !== 0) { delayMs = 0; lsSet('halvard:delay:' + outputMode, 0); renderDelay(); }
+    }
+    song.corr = corr; song.ear = true; song.corrSrc = 'ear';
+    basePush(corr * 1000);
+    endCal();
+    applyLine();
+    syncStatus('LOCKED BY EAR ' + hhmm());
+    fetch('/api/video-offset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ videoId: song.videoId, offsetMs: Math.round(corr * 1000), title: song.title, deviceId: deviceId() }) }).catch(() => {});
+  } catch (err) {
+    report.reason = String(err && err.message || err);
+    if (CTL.cal === cal) { endCal(); syncStatus('ESTIMATED ' + hhmm()); }
+  }
+  earLog(report);
+}
+
+function ctlSeek(t) {
+  if (CTL.slewTimer) { clearTimeout(CTL.slewTimer); CTL.slewTimer = null; }
+  try { if (PT.rate !== 1) player.setPlaybackRate(1); } catch (e) {}
+  PT.rate = 1;
+  player.seekTo(Math.max(0, t + CTL.seekLat), true);
+  player.playVideo();
+  player.unMute();
+  CTL.phase = 'seeking'; CTL.phaseAt = perfS(); CTL.seekPending = true;
+  ptReset();
+}
+function ctlTick() {
+  if (!playerReady || !player || typeof player.seekTo !== 'function') return;
+  const now = perfS();
+  if (playerState === 1 && loadedVideo) CTL.lastAud = { vid: loadedVideo, at: now };
+  const cal = CTL.cal;
+  const want = audioOn && outputMode !== 'off' && current && current.videoId && CTL.oT !== null && !CTL.hold;
+  if (!want || (cal && cal.stage === 'hush' && now < cal.hushUntil)) {
+    if (playerState === 1 || playerState === 3) { try { player.pauseVideo(); } catch (e) {} }
+    if (!want && cal) endCal();
+    CTL.phase = 'idle';
+    return;
+  }
+  if (cal && now - cal.started > cal.delta + 30) { endCal(); syncStatus('ESTIMATED ' + hhmm()); earLog({ kind: 'ear_cal', result: 'fail', reason: 'timed out' }); return; }
+  if (cal && cal.stage === 'hush') { cal.stage = 'preroll'; renderLock(); }
+  const pre = cal ? cal.delta : 0;
+  const t = CTL.oT - pre + now;
+  if (current.durationSeconds && CTL.oT + now > current.durationSeconds + 1) { try { player.pauseVideo(); } catch (e) {} if (cal) endCal(); return; }
+  if (CTL.rateOk === null) { try { const r = player.getAvailablePlaybackRates(); if (r && r.length) CTL.rateOk = r.indexOf(1.25) >= 0 && r.indexOf(0.75) >= 0; } catch (e) {} }
+
+  if (loadedVideo !== current.videoId) {
+    loadedVideo = current.videoId;
+    if (cal && cal.audibleFrom === null) cal.audibleFrom = now;
+    try { player.unMute(); player.setVolume(100); if (PT.rate !== 1) player.setPlaybackRate(1); } catch (e) {}
+    PT.rate = 1;
+    player.loadVideoById({ videoId: current.videoId, startSeconds: Math.max(0, t + 1) });
+    CTL.phase = 'loading'; CTL.phaseAt = now; CTL.seekPending = false;
+    ptReset();
+    return;
+  }
+  if (playerState !== 1) {
+    if ((CTL.phase === 'loading' || CTL.phase === 'seeking') && now - CTL.phaseAt < 6) return;
+    if (cal && cal.audibleFrom === null) { cal.audibleFrom = now; try { player.setVolume(100); } catch (e) {} }
+    ctlSeek(t);
+    return;
+  }
+  if (CTL.phase === 'slew') return;
+  const o = ptLine();
+  if (o === null) return;
+  const e = (CTL.oT - pre) - o;
+  CTL.err = e;
+  if (CTL.seekPending) {
+    CTL.seekPending = false;
+    if (Math.abs(e) < 2.5) { CTL.seekLat = Math.max(0, Math.min(2.5, CTL.seekLat + 0.7 * e)); lsSet('halvard:seeklat', CTL.seekLat.toFixed(3)); }
+  }
+  if (cal) {
+    if (cal.stage !== 'preroll') return;
+    if (Math.abs(e) > 3.5) { if (cal.audibleFrom === null) cal.audibleFrom = now; cal.t0 = null; ctlSeek(t); return; }
+    if (cal.audibleFrom === null) cal.audibleFrom = now;
+    if (cal.t0 === null) { cal.t0 = now; return; }
+    if (now >= cal.t0 + EAR_WIN + 0.15) { cal.oLine = o; calCompute(); }
+    return;
+  }
+  if (Math.abs(e) > 1 || (!CTL.rateOk && Math.abs(e) > 0.12)) { ctlSeek(t); return; }
+  if (Math.abs(e) > 0.02 && CTL.rateOk) {
+    const rate = e > 0 ? 1.25 : 0.75;
+    try { player.setPlaybackRate(rate); } catch (err) { CTL.rateOk = false; return; }
+    PT.rate = rate; CTL.phase = 'slew';
+    CTL.slewTimer = setTimeout(() => {
+      CTL.slewTimer = null;
+      try { player.setPlaybackRate(1); } catch (err) {}
+      PT.rate = 1; CTL.phase = 'settle'; ptReset();
+    }, Math.max(60, Math.abs(e) / 0.25 * 1000));
+    return;
+  }
+  CTL.phase = 'hold';
+}
+function syncAudio() { ctlTick(); }
+try { if (localStorage.getItem('halvard:ear') === '0') $('earToggle').checked = false; } catch (e) {}
+$('earToggle').addEventListener('change', () => {
+  lsSet('halvard:ear', $('earToggle').checked ? 1 : 0);
+  if (!$('earToggle').checked && CTL.cal) endCal();
+  log('EAR', $('earToggle').checked ? 'ear lock on, tunes each song by listening' : 'ear lock off, songs run on estimates');
+});
+setInterval(ctlTick, 150);
 
 let venueLoc = null, venueLocAt = 0, venueLocPending = null;
 function getVenueLoc() {
