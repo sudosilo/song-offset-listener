@@ -5,220 +5,260 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Song Offset Listener</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
 <style>
+  /* BLUE PHONE: comic book skin for Song Offset Listener */
+  :root { --ink: #141414; --paper: #fffdf4; --cream: #fff6d6; --yellow: #ffd23f; --blue: #1a5fd0; --red: #ff4f5e; --cyan: #3ec7f0; --green: #43c46b; --pink: #ff8fc7; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
   body {
-    font-family: Georgia, serif;
-    background: #ffffff;
-    color: #111;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
+    font-family: 'Comic Neue', 'Comic Sans MS', sans-serif;
+    font-weight: 700;
+    color: var(--ink);
+    background-color: var(--cream);
+    background-image: radial-gradient(rgba(26,95,208,.18) 1.3px, transparent 1.4px);
+    background-size: 14px 14px;
     min-height: 100vh;
-    margin: 0;
+    display: flex; flex-direction: column; align-items: center;
     text-align: center;
-    padding: 20px;
-    box-sizing: border-box;
+    padding: 12px 16px 40px;
+    overflow-x: hidden;
   }
-  h1 { font-size: 1.2rem; color: #1a4fa0; margin-bottom: 8px; }
+  .bang { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-weight: 400; }
+  .topbar { width: 100%; max-width: 460px; display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  #menuBtn { width: 46px; height: 46px; flex: none; border: 3px solid var(--ink); border-radius: 10px; background: var(--yellow); box-shadow: 3px 3px 0 var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+  #menuBtn i { display: block; width: 20px; height: 3px; background: var(--ink); margin: 2px 0; border-radius: 2px; }
+  #menuBtn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  h1.logo { flex: 1; margin: 0; font-size: 2rem; line-height: 1; color: var(--yellow); -webkit-text-stroke: 1.5px var(--ink); text-shadow: 3px 3px 0 var(--blue); transform: rotate(-2deg); padding-right: 56px; }
   #listenBtn {
-    font-size: 1.4rem;
-    padding: 20px 40px;
-    border-radius: 12px;
-    border: 2px solid #1a4fa0;
-    background: #eaf1fb;
-    color: #1a4fa0;
-    cursor: pointer;
+    font-family: 'Bangers', Impact, sans-serif; font-size: 2.6rem; letter-spacing: 2px;
+    width: 180px; height: 180px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff3a8, var(--yellow) 62%);
+    border: 4px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
+    color: var(--red); -webkit-text-stroke: 1.3px var(--ink);
+    cursor: pointer; margin-top: 4px;
   }
-  #listenBtn:active { background: #1a4fa0; color: #fff; }
-  #status { margin-top: 20px; font-size: 1rem; color: #444; min-height: 1.2em; }
+  #listenBtn:active { transform: translate(4px, 4px); box-shadow: 2px 2px 0 var(--ink); }
+  #listenBtn:disabled { color: var(--blue); animation: listenPulse 1s ease-in-out infinite; }
+  @keyframes listenPulse { 50% { box-shadow: 6px 6px 0 var(--ink), 0 0 0 16px rgba(26,95,208,.22); } }
+  #status {
+    margin-top: 18px; width: 100%; max-width: 340px; height: 3.6em; overflow: hidden;
+    background: #fff; border: 3px solid var(--ink); border-radius: 18px; padding: 8px 12px;
+    font-size: 1rem; line-height: 1.25; display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  #status:empty { visibility: hidden; }
   #result {
-    margin-top: 20px;
-    border: 2px solid #1a4fa0;
-    border-radius: 10px;
-    padding: 16px 24px;
-    display: none;
-    max-width: 90%;
+    display: block !important;
+    margin-top: 18px; width: 100%; max-width: 380px;
+    background: #fff; border: 4px solid var(--ink); border-radius: 8px;
+    box-shadow: 7px 7px 0 var(--blue); padding: 26px 16px 14px; position: relative;
   }
-  #result h2 { margin: 0 0 6px 0; font-size: 1.3rem; }
-  #result .artist { color: #555; margin-bottom: 12px; }
-  #result .offset { font-size: 2rem; font-variant-numeric: tabular-nums; color: #1a4fa0; }
-  #result .label { font-size: 0.85rem; color: #777; }
-  #manualSection { margin-top: 30px; width: 100%; max-width: 420px; }
-  #manualToggle { background: none; border: none; color: #1a4fa0; font-size: 0.95rem; text-decoration: underline; cursor: pointer; }
-  #manualLabel { font-size: 0.85rem; color: #999; margin-bottom: 8px; }
-  #searchBox { display: block; margin-top: 6px; }
-  #searchInput { width: 70%; padding: 10px; font-size: 1rem; border: 2px solid #1a4fa0; border-radius: 8px; font-family: Georgia, serif; }
-  #searchBtn { padding: 10px 16px; font-size: 1rem; border: 2px solid #1a4fa0; background: #eaf1fb; color: #1a4fa0; border-radius: 8px; }
-  #searchResults { margin-top: 16px; text-align: left; }
-  .searchItem { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid #ddd; cursor: pointer; }
-  .searchItem img { width: 60px; height: 45px; border-radius: 4px; }
+  #result::before { content: "NOW PLAYING"; position: absolute; top: -14px; left: 14px; background: var(--yellow); border: 3px solid var(--ink); padding: 2px 10px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1rem; transform: rotate(-3deg); }
+  #songTitle { margin: 0; font-family: 'Bangers', Impact, sans-serif; font-weight: 400; letter-spacing: 1px; font-size: 2rem; line-height: 1.05; color: var(--blue); height: 2.1em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #songTitle:empty::before { content: "Tap listen near the music"; color: #b9b9b9; }
+  #inlineControls { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+  #inlineControls button { font-family: 'Bangers', Impact, sans-serif; font-size: 1.25rem; letter-spacing: 1px; padding: 8px 14px; border: 3px solid var(--ink); border-radius: 10px; box-shadow: 3px 3px 0 var(--ink); color: var(--ink); cursor: pointer; }
+  #inlineControls button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  #syncPauseBtn { background: var(--red); color: #fff !important; min-width: 92px; -webkit-text-stroke: .6px var(--ink); }
+  #nudgeBack { background: var(--cyan); min-width: 72px; }
+  #nudgeForward { background: var(--green); min-width: 72px; }
+  #songArtist { margin-top: 12px; font-size: 1.15rem; height: 1.4em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #songBpm { display: inline-block; margin-top: 8px; height: 1.9em; line-height: 1.5em; padding: 2px 12px; border: 3px solid var(--ink); border-radius: 999px; background: var(--pink); font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.1rem; }
+  #songBpm:empty { visibility: hidden; }
+  #syncPlayer, #feedPlayer { width: 1px; height: 1px; overflow: hidden; margin: 0 auto; }
+  #manualSection { margin-top: 28px; width: 100%; max-width: 380px; }
+  #manualLabel { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.15rem; color: var(--blue); margin-bottom: 6px; }
+  #searchBox { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  #searchInput { flex: 1; min-width: 0; padding: 12px; font-size: 1rem; font-family: 'Comic Neue', sans-serif; font-weight: 700; border: 3px solid var(--ink); border-radius: 10px; background: #fff; color: var(--ink); }
+  #searchBtn { padding: 10px 16px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.2rem; border: 3px solid var(--ink); border-radius: 10px; background: var(--pink); box-shadow: 3px 3px 0 var(--ink); color: var(--ink); }
+  #searchBtn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  #searchResults { width: 100%; margin-top: 12px; text-align: left; }
+  .searchItem { display: flex; align-items: center; gap: 10px; padding: 8px; margin-bottom: 8px; background: #fff; border: 3px solid var(--ink); border-radius: 10px; cursor: pointer; }
+  .searchItem img { width: 60px; height: 45px; border-radius: 6px; border: 2px solid var(--ink); }
   .searchItem .meta { font-size: 0.9rem; }
-  .searchItem .meta .t { color: #111; }
-  .searchItem .meta .c { color: #777; font-size: 0.8rem; }
-  #broadcastPanel { display: none; margin-top: 20px; border: 2px solid #1a4fa0; border-radius: 10px; padding: 16px; }
+  .searchItem .meta .c { color: #666; font-size: 0.8rem; }
+  #broadcastPanel { display: none; margin-top: 16px; background: #fff; border: 4px solid var(--ink); border-radius: 8px; box-shadow: 6px 6px 0 var(--red); padding: 14px; }
   #hostPlayer { width: 100%; max-width: 320px; aspect-ratio: 16/9; margin: 12px auto; }
-  #broadcastBtn { padding: 14px 28px; font-size: 1.1rem; border-radius: 10px; border: 2px solid #1a4fa0; background: #eaf1fb; color: #1a4fa0; cursor: pointer; }
-  #broadcastStatus { margin-top: 10px; font-size: 0.9rem; color: #777; }
-  #feed { margin-top: 30px; width: 100%; max-width: 420px; text-align: left; }
-  #feed h3 { font-size: 0.9rem; color: #777; margin-bottom: 8px; }
-  .feedItem { border-bottom: 1px solid #ddd; padding: 8px 0; }
-  .feedItem .ft { color: #1a4fa0; font-size: 1rem; }
-  .feedItem .fa { color: #555; font-size: 0.85rem; }
-  .feedItem .fs { color: #999; font-size: 0.75rem; }
-  #videoInfo a { color: #1a4fa0; }
-  #syncWatchBtn {
-    margin-top: 12px;
-    padding: 10px 20px;
-    font-size: 1rem;
-    border-radius: 10px;
-    border: 2px solid #1a4fa0;
-    background: #eaf1fb;
-    color: #1a4fa0;
-    cursor: pointer;
+  #broadcastBtn { padding: 12px 22px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.3rem; border-radius: 10px; border: 3px solid var(--ink); background: var(--yellow); box-shadow: 3px 3px 0 var(--ink); color: var(--ink); cursor: pointer; }
+  #broadcastStatus { margin-top: 10px; font-size: 0.9rem; color: #555; }
+  #audioUnlock { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; width: calc(100% - 32px); max-width: 340px; padding: 12px; background: var(--yellow); border: 3px solid var(--ink); border-radius: 12px; box-shadow: 4px 4px 0 var(--ink); }
+  #audioUnlockBtn { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.2rem; padding: 8px 18px; border: 3px solid var(--ink); border-radius: 10px; background: #fff; color: var(--ink); }
+  #drawerShade { position: fixed; inset: 0; background: rgba(20,20,20,.25); z-index: 60; display: none; }
+  #drawerShade.open { display: block; }
+  #drawer {
+    position: fixed; top: 0; left: 0; bottom: 0; width: min(86vw, 380px); z-index: 61;
+    background-color: var(--paper); background-image: radial-gradient(rgba(255,79,94,.14) 1.2px, transparent 1.3px); background-size: 12px 12px;
+    border-right: 4px solid var(--ink); box-shadow: 6px 0 0 var(--blue);
+    transform: translateX(-110%); transition: transform .2s ease; overflow-y: auto; text-align: left; padding: 14px 14px 40px; font-weight: 400;
   }
-  #syncCountdown { margin-top: 8px; font-size: 1.1rem; color: #1a4fa0; min-height: 1.4rem; }
-  #syncPlayer { width: 1px; height: 1px; overflow: hidden; margin: 8px auto; }
-  #feedPlayer { width: 1px; height: 1px; overflow: hidden; margin: 8px auto; }
-  .feedItem { cursor: pointer; }
-  #inlineControls button {
-    padding: 5px 10px;
-    font-size: 0.85rem;
-    border-radius: 8px;
-    border: 2px solid #1a4fa0;
-    background: #eaf1fb;
-    color: #1a4fa0;
-    cursor: pointer;
-  }
-  #syncPauseBtn { min-width: 70px; }
-  #nudgeBack, #nudgeForward { min-width: 62px; }
-  #nudgeSubRow button {
-    padding: 4px 8px;
-    font-size: 0.8rem;
-    border-radius: 6px;
-    border: 1px solid #1a4fa0;
-    background: #eaf1fb;
-    color: #1a4fa0;
-    cursor: pointer;
-  }
-  #nudgeValue { font-size: 0.85rem; }
-  #modeMenuBtn { position: fixed; top: 12px; right: 12px; width: 38px; height: 38px; border-radius: 8px; border: 2px solid #1a4fa0; background: #eaf1fb; padding: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  #modeMenuBtn i { display: block; width: 16px; height: 2px; background: #1a4fa0; margin: 2px 0; }
-  #modeMenu { position: fixed; top: 56px; right: 12px; background: #fff; border: 2px solid #1a4fa0; border-radius: 10px; display: none; z-index: 50; text-align: left; min-width: 190px; overflow: hidden; }
-  #modeMenu.open { display: block; }
-  #modeMenu a { display: block; padding: 12px 14px; color: #1a4fa0; text-decoration: none; border-bottom: 1px solid #ddd; }
-  #modeMenu a:last-child { border-bottom: 0; }
-  #earStatus { margin-left: 6px; color: #1a4fa0; font-size: 0.85rem; }
+  #drawer.open { transform: translateX(0); }
+  .drawerHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .drawerHead b { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.7rem; color: var(--blue); font-weight: 400; }
+  #drawerClose { font-family: 'Bangers', Impact, sans-serif; font-size: 1.1rem; letter-spacing: 1px; padding: 6px 12px; border: 3px solid var(--ink); border-radius: 10px; background: var(--red); color: #fff; box-shadow: 3px 3px 0 var(--ink); }
+  details.sect { margin-bottom: 12px; background: #fff; border: 3px solid var(--ink); border-radius: 10px; box-shadow: 4px 4px 0 var(--ink); }
+  details.sect > summary { cursor: pointer; list-style: none; padding: 10px 12px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.25rem; color: var(--ink); background: var(--yellow); border-radius: 7px; }
+  details.sect > summary::-webkit-details-marker { display: none; }
+  details.sect > summary::after { content: " +"; color: var(--blue); }
+  details.sect[open] > summary::after { content: " -"; }
+  details.sect[open] > summary { border-bottom: 3px solid var(--ink); border-radius: 7px 7px 0 0; }
+  .sectBody { padding: 10px 12px; font-size: 0.95rem; }
+  .sectBody a { color: var(--blue); }
+  .sectBody button, .sectBody select { font-family: 'Comic Neue', sans-serif; font-weight: 700; padding: 6px 10px; border: 2px solid var(--ink); border-radius: 8px; background: #eaf1fb; color: var(--ink); }
+  .appLink { display: block; padding: 10px 12px; margin-bottom: 8px; border: 2px solid var(--ink); border-radius: 8px; text-decoration: none; color: var(--ink) !important; background: #eaf1fb; font-weight: 700; }
+  .appLink.here { background: var(--cyan); }
+  .feedItem { border-bottom: 2px dashed #ccc; padding: 8px 0; cursor: pointer; }
+  .feedItem .ft { color: var(--blue); font-size: 1rem; font-weight: 700; }
+  .feedItem .fa { color: #444; font-size: 0.85rem; }
+  .feedItem .fs { color: #888; font-size: 0.75rem; }
+  #songOffset { font-size: 1.8rem; color: var(--blue); font-variant-numeric: tabular-nums; }
+  .sectBody .label { font-size: 0.85rem; color: #666; }
+  #syncCountdown { margin-top: 6px; color: var(--blue); min-height: 1.3em; }
+  #earStatus { margin-left: 6px; color: var(--blue); font-size: 0.85rem; }
   #earStatus.locked { font-weight: 700; }
 </style>
 </head>
 <body>
-  <button id="modeMenuBtn" aria-label="Menu"><i></i><i></i><i></i></button>
-  <nav id="modeMenu">
-    <a href="/" style="color:#333;">Song Offset Listener</a>
-    <a href="/zone">Zone Director</a>
-  </nav>
-  <script>
-    document.getElementById('modeMenuBtn').addEventListener('click', function (e) { e.stopPropagation(); document.getElementById('modeMenu').classList.toggle('open'); });
-    document.addEventListener('click', function () { document.getElementById('modeMenu').classList.remove('open'); });
-  </script>
-  <h1>Song Offset Listener</h1>
+  <header class="topbar">
+    <button id="menuBtn" aria-label="Menu"><i></i><i></i><i></i></button>
+    <h1 class="logo bang">Song Offset Listener</h1>
+  </header>
+
   <button id="listenBtn">Listen</button>
   <div id="status"></div>
 
+  <div id="result">
+    <h2 id="songTitle"></h2>
+    <div id="inlineControls">
+      <button id="syncPauseBtn">Pause</button>
+      <button id="nudgeBack">- 0.5s</button>
+      <button id="nudgeForward">+ 0.5s</button>
+    </div>
+    <div class="artist" id="songArtist"></div>
+    <div id="songBpm"></div>
+    <div id="syncPlayer"></div>
+    <div id="feedPlayer"></div>
+  </div>
+
   <div id="manualSection">
-    <div id="manualLabel">optional manual search</div>
+    <div id="manualLabel">Find a song</div>
     <div id="searchBox">
       <input id="searchInput" type="text" placeholder="song or artist">
       <button id="searchBtn">Search</button>
       <div id="searchResults"></div>
     </div>
     <div id="broadcastPanel">
-      <div id="chosenTitle" style="color:#1a4fa0;font-size:1.1rem;"></div>
+      <div id="chosenTitle" style="color:#1a5fd0;font-size:1.1rem;"></div>
       <div id="hostPlayer"></div>
       <button id="broadcastBtn">Play and Broadcast</button>
       <div id="broadcastStatus"></div>
     </div>
   </div>
 
-  <div id="result">
-    <h2 id="songTitle" style="margin:0;"></h2>
-    <div id="inlineControls" style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top:8px;">
-      <button id="syncPauseBtn">Pause</button>
-      <button id="nudgeBack">- 0.5s</button>
-      <button id="nudgeForward">+ 0.5s</button>
-    </div>
-    <div class="artist" id="songArtist"></div>
-    <div class="artist" id="songBpm" style="font-weight:700;"></div>
-    <div class="offset" id="songOffset"></div>
-    <div class="label">matched offset into track</div>
-    <div class="label" id="videoInfo" style="margin-top:8px;"></div>
-    <button id="syncWatchBtn" style="display:none;">Watch In Sync</button>
-    <div id="syncCountdown"></div>
-    <div id="nudgeSubRow" style="margin-top:8px; font-size:0.85rem; color:#999;">
-      <span id="nudgeValue" style="display:none;">nudge 0.0s</span>
-      <button id="nudgeReset">reset</button>
-      <button id="earTuneBtn">tune by ear</button>
-      <span id="earStatus"></span>
-    </div>
-    <details id="advancedToolsPanel" style="margin-top:12px; text-align:left; max-width:340px; margin-left:auto; margin-right:auto;">
-      <summary style="cursor:pointer; color:#999; font-size:0.85rem; text-align:center;">tuning &amp; testing tools</summary>
-      <div style="margin-top:10px; font-size:0.85rem; color:#999;">
-        <label><input type="checkbox" id="recheckToggle"> auto drift-correct (uses AudD)</label><br>
-        <label><input type="checkbox" id="earToggle" checked> ear lock (phone hears its own copy and lines it up with the room)</label>
-      </div>
-      <div id="acousticMeasureRow" style="margin-top:10px;">
-        <select id="bandSelect" style="margin-right:8px;">
-          <option value="full">full range</option>
-          <option value="lows">lows only</option>
-          <option value="mids">mids only</option>
-          <option value="highs">highs only</option>
-        </select>
-        <button id="measureSyncBtn">Measure Sync (mic)</button>
-        <div id="measureSyncStatus" style="font-size:0.85rem; color:#999; margin-top:6px;"></div>
-        <label style="display:block; margin-top:6px; font-size:0.85rem; color:#999;"><input type="checkbox" id="autoTwinToggle"> local twin auto-correct (mic, free, no API)</label>
-      </div>
-      <div id="cueTagRow" style="margin-top:10px; font-size:0.85rem; color:#999;">
-        <div>tag cue points for this song (seconds)</div>
-        <input id="cueInInput" type="number" step="0.5" placeholder="cue in" style="width:70px; margin-right:6px;">
-        <input id="cueOutInput" type="number" step="0.5" placeholder="cue out" style="width:70px; margin-right:6px;">
-        <button id="cueTagBtn">Save Cue Points</button>
-        <div id="cueTagStatus" style="margin-top:4px;"></div>
-        <label style="display:block; margin-top:8px;"><input type="checkbox" id="selfLoopToggle"> test mode: let a song beatmatch into itself</label>
-      </div>
-    </details>
-    <div id="syncPlayer"></div>
-  </div>
-
-  <div id="feed">
-    <h3>heard across all phones</h3>
-    <div id="feedList"></div>
-    <div id="feedPlayerStatus" style="margin-top:8px; font-size:0.85rem; color:#999;"></div>
-    <button id="feedPauseBtn" style="display:none; margin-top:6px;">Pause</button>
-    <div id="feedPlayer"></div>
-  </div>
-
-  <div id="audioUnlock" style="display:none; margin:12px auto; padding:12px; border:2px solid #1a4fa0; border-radius:10px; background:#eaf1fb; max-width:320px;">
-    <div style="font-size:0.9rem; color:#1a4fa0; margin-bottom:8px;">tap once to allow audio on this phone</div>
+  <div id="audioUnlock" style="display:none;">
+    <div style="font-size:0.95rem; margin-bottom:8px;">Tap once to let this phone play music</div>
     <button id="audioUnlockBtn">Enable Audio</button>
   </div>
 
-  <details id="nearbyPanel" style="margin-top:24px; text-align:left; width:100%; max-width:420px;" open>
-    <summary style="cursor:pointer; color:#999; font-size:0.9rem;">nearby broadcasts</summary>
-    <div id="nearbyList"></div>
-  </details>
+  <div id="drawerShade"></div>
+  <aside id="drawer" aria-label="Menu">
+    <div class="drawerHead"><b>Menu</b><button id="drawerClose">Close</button></div>
 
-  <details id="positionsPanel" style="margin-top:24px; text-align:left; width:100%; max-width:420px;">
-    <summary style="cursor:pointer; color:#999; font-size:0.9rem;">live positions</summary>
-    <div id="positionsList"></div>
-    <div id="beatmatchQueued" style="margin-top:10px; font-size:0.85rem; color:#999;"></div>
-    <div id="broadcastNudgeRow" style="margin-top:14px; display:none;">
-      <div style="font-size:0.85rem; color:#999;">broadcast timing (shifts every phone at once)</div>
-      <button id="broadcastNudgeBack" style="margin-top:6px;">- 0.5s</button>
-      <button id="broadcastNudgeForward" style="margin-left:8px;">+ 0.5s</button>
-      <span id="broadcastNudgeStatus" style="margin-left:8px; font-size:0.85rem; color:#999;"></span>
-    </div>
-  </details>
+    <details class="sect" open>
+      <summary>Apps</summary>
+      <div class="sectBody">
+        <a class="appLink here" href="/">Song Offset Listener</a>
+        <a class="appLink" href="/zone">Zone Director</a>
+      </div>
+    </details>
+
+    <details class="sect">
+      <summary>Heard across all phones</summary>
+      <div class="sectBody">
+        <div id="feed">
+          <div id="feedList"></div>
+          <div id="feedPlayerStatus" style="margin-top:8px; font-size:0.85rem; color:#666;"></div>
+          <button id="feedPauseBtn" style="display:none; margin-top:6px;">Pause</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="sect" id="nearbyPanel">
+      <summary>Nearby broadcasts</summary>
+      <div class="sectBody"><div id="nearbyList"></div></div>
+    </details>
+
+    <details class="sect" id="positionsPanel">
+      <summary>Live positions</summary>
+      <div class="sectBody">
+        <div id="positionsList"></div>
+        <div id="beatmatchQueued" style="margin-top:10px; font-size:0.85rem; color:#666;"></div>
+        <div id="broadcastNudgeRow" style="margin-top:14px; display:none;">
+          <div style="font-size:0.85rem; color:#666;">broadcast timing (shifts every phone at once)</div>
+          <button id="broadcastNudgeBack" style="margin-top:6px;">- 0.5s</button>
+          <button id="broadcastNudgeForward" style="margin-left:8px;">+ 0.5s</button>
+          <span id="broadcastNudgeStatus" style="margin-left:8px; font-size:0.85rem; color:#666;"></span>
+        </div>
+      </div>
+    </details>
+
+    <details class="sect">
+      <summary>Sync details</summary>
+      <div class="sectBody">
+        <div id="songOffset"></div>
+        <div class="label">matched offset into track</div>
+        <div class="label" id="videoInfo" style="margin-top:8px;"></div>
+        <button id="syncWatchBtn" style="display:none; margin-top:8px;">Watch In Sync</button>
+        <div id="syncCountdown"></div>
+        <div id="nudgeSubRow" style="margin-top:8px;">
+          <span id="nudgeValue" style="display:none;">nudge 0.0s</span>
+          <button id="nudgeReset">reset</button>
+          <button id="earTuneBtn">tune by ear</button>
+          <span id="earStatus"></span>
+        </div>
+      </div>
+    </details>
+
+    <details class="sect" id="advancedToolsPanel">
+      <summary>Tuning and testing tools</summary>
+      <div class="sectBody">
+        <div style="font-size:0.9rem;">
+          <label><input type="checkbox" id="recheckToggle"> auto drift-correct (uses AudD)</label><br>
+          <label><input type="checkbox" id="earToggle" checked> ear lock (phone hears its own copy and lines it up with the room)</label>
+        </div>
+        <div id="acousticMeasureRow" style="margin-top:10px;">
+          <select id="bandSelect" style="margin-right:8px;">
+            <option value="full">full range</option>
+            <option value="lows">lows only</option>
+            <option value="mids">mids only</option>
+            <option value="highs">highs only</option>
+          </select>
+          <button id="measureSyncBtn">Measure Sync (mic)</button>
+          <div id="measureSyncStatus" style="font-size:0.85rem; color:#666; margin-top:6px;"></div>
+          <label style="display:block; margin-top:6px; font-size:0.85rem;"><input type="checkbox" id="autoTwinToggle"> local twin auto-correct (mic, free, no API)</label>
+        </div>
+        <div id="cueTagRow" style="margin-top:10px; font-size:0.85rem;">
+          <div>tag cue points for this song (seconds)</div>
+          <input id="cueInInput" type="number" step="0.5" placeholder="cue in" style="width:70px; margin-right:6px;">
+          <input id="cueOutInput" type="number" step="0.5" placeholder="cue out" style="width:70px; margin-right:6px;">
+          <button id="cueTagBtn">Save Cue Points</button>
+          <div id="cueTagStatus" style="margin-top:4px;"></div>
+          <label style="display:block; margin-top:8px;"><input type="checkbox" id="selfLoopToggle"> test mode: let a song beatmatch into itself</label>
+        </div>
+      </div>
+    </details>
+  </aside>
+  <script>
+    (function () {
+      var d = document.getElementById('drawer'), sh = document.getElementById('drawerShade');
+      function open() { d.classList.add('open'); sh.classList.add('open'); }
+      function close() { d.classList.remove('open'); sh.classList.remove('open'); }
+      document.getElementById('menuBtn').addEventListener('click', function (e) { e.stopPropagation(); open(); });
+      document.getElementById('drawerClose').addEventListener('click', close);
+      sh.addEventListener('click', close);
+    })();
+  </script>
 
 <script>
 const listenBtn = document.getElementById('listenBtn');
@@ -409,7 +449,8 @@ async function startListen() {
       return;
     }
     activateMatch(data, true);
-    document.getElementById("songBpm").textContent = result.localBpm ? result.localBpm + " BPM" : "BPM not detected";
+    const bpmShown = result.localBpm || (data && data.bpm);
+    document.getElementById("songBpm").textContent = bpmShown ? Math.round(bpmShown) + " BPM" : "";
     awaitingOwnRecognition = false;
     statusEl.textContent = '';
   } catch (err) {
@@ -530,7 +571,7 @@ function anchorIsStale(data) {
 }
 
 function activateMatch(data, isMine, skipTriggerSync) {
-  if (!isMine) document.getElementById("songBpm").textContent = data.bpm ? data.bpm + " BPM" : "";
+  if (!isMine) document.getElementById("songBpm").textContent = data.bpm ? Math.round(data.bpm) + " BPM" : "";
   if (!isMine && anchorIsStale(data)) {
     lastSeenAnchorKey = matchKey(data);
     return;
