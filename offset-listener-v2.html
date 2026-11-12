@@ -93,8 +93,23 @@
   @keyframes pow { 0% { transform: translate(-50%, -50%) scale(.2) rotate(-14deg); opacity: 0; } 25% { transform: translate(-50%, -50%) scale(1.15) rotate(-6deg); opacity: 1; } 70% { transform: translate(-50%, -50%) scale(1) rotate(-8deg); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.3) rotate(-8deg); opacity: 0; } }
   #feedPlayer { width: 1px; height: 1px; overflow: hidden; }
 
+  /* up next chips: the row keeps its height even when empty so nothing below it moves */
+  #nextRow { margin-top: 18px; width: 100%; max-width: 380px; height: 74px; text-align: left; }
+  #nextRow.empty { visibility: hidden; }
+  #nextLabel { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.1rem; color: var(--blue); height: 1.4em; }
+  #nextChips { display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; height: 44px; padding: 2px 4px 6px 2px; scrollbar-width: none; }
+  #nextChips::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; max-width: 210px; height: 36px; padding: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'Comic Neue', sans-serif; font-weight: 700; font-size: .9rem; border: 3px solid var(--ink); border-radius: 999px; background: var(--yellow); box-shadow: 3px 3px 0 var(--ink); color: var(--ink); cursor: pointer; }
+  .chip.queued { background: var(--cyan); }
+  .chip:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  #nameBox { display: flex; gap: 8px; margin-bottom: 18px; }
+  #nameInput { flex: 1; min-width: 0; padding: 12px; font-size: 1rem; font-family: 'Comic Neue', sans-serif; font-weight: 700; border: 3px solid var(--ink); border-radius: 10px; background: #fff; color: var(--ink); }
+  #nameNow, #nameNext { flex: 0 0 auto; width: 64px; padding: 10px 0; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.2rem; border: 3px solid var(--ink); border-radius: 10px; box-shadow: 3px 3px 0 var(--ink); color: var(--ink); }
+  #nameNow { background: var(--yellow); }
+  #nameNext { background: var(--cyan); }
+  #nameNow:active, #nameNext:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
   #manualSection { margin-top: 28px; width: 100%; max-width: 380px; }
-  #manualLabel { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.15rem; color: var(--blue); margin-bottom: 6px; }
+  #manualLabel, .manualLabel { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.15rem; color: var(--blue); margin-bottom: 6px; }
   #searchBox { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   #searchInput { flex: 1; min-width: 0; padding: 12px; font-size: 1rem; font-family: 'Comic Neue', sans-serif; font-weight: 700; border: 3px solid var(--ink); border-radius: 10px; background: #fff; color: var(--ink); }
   #searchBtn { padding: 10px 16px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.2rem; border: 3px solid var(--ink); border-radius: 10px; background: var(--pink); box-shadow: 3px 3px 0 var(--ink); color: var(--ink); }
@@ -168,8 +183,19 @@
     <div id="feedPlayer"></div>
   </div>
 
+  <div id="nextRow" class="empty">
+    <div id="nextLabel">UP NEXT?</div>
+    <div id="nextChips"></div>
+  </div>
+
   <div id="manualSection">
-    <div id="manualLabel">Find a song</div>
+    <div id="manualLabel">Name it</div>
+    <div id="nameBox">
+      <input id="nameInput" type="text" placeholder="type or say the song" autocomplete="off">
+      <button id="nameNow">Now</button>
+      <button id="nameNext">Next</button>
+    </div>
+    <div id="manualLabel2" class="manualLabel">Find a song</div>
     <div id="searchBox">
       <input id="searchInput" type="text" placeholder="song or artist">
       <button id="searchBtn">Search</button>
@@ -587,6 +613,7 @@ function renderStamp() {
   let text = '', cls = '';
   const playing = playerState === 1 && wantAudio();
   if (current && !current.videoId) { text = 'NO COPY'; cls = 'nocopy'; }
+  else if (CTL.cal && CTL.cal.probe) { text = 'CHECKING'; cls = 'tuning'; }
   else if (CTL.cal) { text = 'TUNING'; cls = 'tuning'; }
   else if (current && current.videoId && !current.hostOnly && !audioOn) { text = 'PAUSED'; cls = 'paused'; }
   else if (playing && current.ear) { text = 'LOCKED!'; cls = 'locked'; }
@@ -607,6 +634,7 @@ function activateMatch(data, isMine, hostOnly) {
       const held = CTL.hold;
       CTL.hold = false;
       current.offsetSeconds = data.offsetSeconds; current.epochMs = typeof data.epochMs === 'number' ? data.epochMs : now();
+      if (data.videoDurationSeconds) current.durationSeconds = data.videoDurationSeconds;
       setNominal(false);
       if (audioOn && (held || !current.ear)) startCal(held ? 6.5 : 10);
     }
@@ -639,7 +667,7 @@ function activateMatch(data, isMine, hostOnly) {
 }
 
 async function pollRemoteAnchor() {
-  if (awaitingOwnRecognition || listening) return;
+  if (awaitingOwnRecognition || listening || GUESS) return;
   const loc = await getMyLocation();
   if (!loc) return;
   try {
@@ -697,6 +725,7 @@ async function startListen() {
   const side = (broadcasting && hostPlayer) ? hostPlayer : (pendingFeedEntry && feedPlayerReady && feedPlayer) ? feedPlayer : null;
   let sideMuted = false;
   try { if (side && !side.isMuted()) { side.mute(); sideMuted = true; } } catch (e) {}
+  if (GUESS) guessStop(true);
   if (wantAudio() && (playerState === 1 || playerState === 3)) { CTL.hold = true; if (CTL.cal) endCal(); ctlTick(); }
   awaitingOwnRecognition = true;
   try {
@@ -722,6 +751,8 @@ async function startListen() {
       return;
     }
     activateMatch(data, true);
+    introCapture(data, recStart + RECORD_MS / 1000);
+    songLocked(current);
     const bpm = result.localBpm || data.bpm;
     songBpm.textContent = bpm ? Math.round(bpm) + ' BPM' : '';
     say('');
@@ -811,6 +842,7 @@ function startCal(delta) {
 function endCal() { CTL.cal = null; renderStamp(); }
 async function calCompute() {
   const cal = CTL.cal, song = current;
+  if (cal.probe) return probeCompute(cal);
   cal.stage = 'compute';
   const report = { kind: 'ear_cal', delta: cal.delta, result: 'fail' };
   try {
@@ -872,19 +904,21 @@ function ctlSeek(t) {
 function ctlTick() {
   if (!playerReady || !player || typeof player.seekTo !== 'function') return;
   const now = perfS();
-  if (playerState === 1 && loadedVideo) CTL.lastAud = { vid: loadedVideo, at: now };
+  if (playerState === 1 && loadedVideo) { CTL.lastAud = { vid: loadedVideo, at: now }; ownMark(now, loadedVideo, !!(CTL.cal && CTL.cal.probe)); }
+  if (playerState === 1 && current && !current.durationSeconds && loadedVideo === current.videoId) { try { const d = player.getDuration(); if (d > 0) current.durationSeconds = d; } catch (e) {} }
   const cal = CTL.cal, want = wantAudio();
   if (!want || (cal && cal.stage === 'hush' && now < cal.hushUntil)) {
     if (playerState === 1 || playerState === 3) { try { player.pauseVideo(); } catch (e) {} }
-    if (!want && cal && !CTL.hold) endCal();
+    if (!want && cal && cal.probe && !CTL.hold) { endCal(); guessStop(true, 'paused'); }
+    else if (!want && cal && !CTL.hold) endCal();
     CTL.phase = 'idle';
     return;
   }
-  if (cal && now - cal.started > cal.delta + 40) { endCal(); earLog({ kind: 'ear_cal', result: 'fail', reason: 'timed out' }); return; }
+  if (cal && now - cal.started > cal.delta + (cal.probe ? 20 : 40)) { endCal(); earLog({ kind: cal.probe ? 'ear_probe' : 'ear_cal', result: 'fail', reason: 'timed out' }); if (cal.probe) guessNext('timed out'); return; }
   if (cal && cal.stage === 'hush') { cal.stage = 'preroll'; renderStamp(); }
   const pre = cal ? cal.delta : 0;
   const t = CTL.oT - pre + now;
-  if (current.durationSeconds && CTL.oT + now > current.durationSeconds + 1) { try { player.pauseVideo(); } catch (e) {} if (cal) endCal(); return; }
+  if (current.durationSeconds && CTL.oT + now > current.durationSeconds + 1) { try { player.pauseVideo(); } catch (e) {} if (cal) { endCal(); if (cal.probe) guessNext('past the end'); } return; }
   if (CTL.rateOk === null) { try { const r = player.getAvailablePlaybackRates(); if (r && r.length) CTL.rateOk = r.indexOf(1.25) >= 0 && r.indexOf(0.75) >= 0; } catch (e) {} }
 
   if (loadedVideo !== current.videoId) {
@@ -962,13 +996,395 @@ try { if (localStorage.getItem('songsync:ear') === '0') $('earToggle').checked =
 $('earToggle').addEventListener('change', (e) => { lsSet('songsync:ear', e.target.checked ? 1 : 0); if (!e.target.checked && CTL.cal) endCal(); });
 try { if (localStorage.getItem('songsync:follow') === '1') $('followToggle').checked = true; } catch (e) {}
 $('followToggle').addEventListener('change', (e) => lsSet('songsync:follow', e.target.checked ? 1 : 0));
-let followAt = 0;
-setInterval(() => {
-  if (!$('followToggle').checked || listening || !current || current.hostOnly || !EAR.stream) return;
+/* ===== BLUE PHONE: guess and verify. A guessed song (typed, announced, predicted or heard in the intro archive)
+   plays on this phone for a few seconds and the mic checks it against what the room just played.
+   A clear match locks the song and its position at once; no match means it was the wrong song. ===== */
+const PROBE_LOOKBACK = 40, PROBE_ZMIN = 9, PROBE_R = 0.33;
+const OWN = [];
+function ownMark(t, vid, probe) {
+  const last = OWN[OWN.length - 1];
+  if (last && last[2] === vid && last[3] === probe && t - last[1] < 0.6) last[1] = t; else OWN.push([t, t, vid, probe]);
+  while (OWN.length && t - OWN[0][1] > 60) OWN.shift();
+}
+let GUESS = null, guessToken = 0;
+function cleanTitle(t) { return String(t || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '').replace(/\s+/g, ' ').trim(); }
+function splitYt(r) {
+  const t = cleanTitle(r.title), ch = String(r.channel || '').replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, '').trim();
+  const i = t.indexOf(' - ');
+  if (i > 0) return { title: t.slice(i + 3).trim(), artist: t.slice(0, i).trim() };
+  return { title: t, artist: ch };
+}
+function songKey(title, artist) { return (String(title || '') + '|' + String(artist || '')).toLowerCase().replace(/[^a-z0-9|]/g, ''); }
+async function ytTop(q, n) {
+  try {
+    const r = await fetch('/api/youtube-search?q=' + encodeURIComponent(q));
+    const d = await r.json();
+    return (d.results || []).slice(0, n).map(x => Object.assign({ videoId: x.videoId }, splitYt(x)));
+  } catch (e) { return []; }
+}
+function roomPosNow(g) { return g.hint ? g.hint.pos + (perfS() - g.hint.at) : null; }
+function nextProbePos(g) {
+  const cand = g.list[g.ci];
+  if (g.hint) {
+    if (g.pi >= g.perCand) return null;
+    const r = roomPosNow(g);
+    return Math.max(0, r - 14 - 30 * g.pi);
+  }
+  if (g.pi >= (g.ci === 0 ? 3 : 1)) return null;
+  const p = Math.max(0, perfS() - g.t0 - 12 + 32 * g.pi);
+  if (cand.durationSeconds && p > cand.durationSeconds - 6) return null;
+  return p;
+}
+/* list: songs to try in order; opts.hint = { pos, at } where the room was at song position pos at perf time at */
+async function startGuess(list, opts) {
+  opts = opts || {};
+  if (!list.length) return false;
+  const micOk = await earMicOn();
+  if (!micOk) { say('I need the microphone to check a guess.'); return false; }
+  if (!audioUnlocked) unlockAudio();
+  if (listening) return false;
+  if (GUESS) guessStop(false);
+  audioOn = true;
+  if (CTL.cal) endCal();
+  GUESS = { token: ++guessToken, list: list.slice(), ci: 0, pi: 0, perCand: opts.perCand || 1, hint: opts.hint || null, then: opts.then || null, why: opts.why || 'guess',
+    prev: current, prevNudge: nudgeMs, tried: [], t0: perfS() };
+  guessStep();
+  return true;
+}
+async function guessStep() {
+  const g = GUESS;
+  if (!g) return;
+  for (let i = 0; i < 40 && !(earReady() && perfS() - earOldestPerf() > 10); i++) {
+    if (i === 0) say('Listening to the room first...');
+    await sleep(500);
+    if (GUESS !== g) return;
+  }
+  while (g.ci < g.list.length) {
+    let cand = g.list[g.ci];
+    if (!cand.videoId) {
+      const found = await ytTop(cand.title + ' ' + (cand.artist || ''), 1);
+      if (GUESS !== g) return;
+      if (found.length) { cand.videoId = found[0].videoId; if (!cand.artist) cand.artist = found[0].artist; }
+    }
+    const p = cand.videoId ? nextProbePos(g) : null;
+    if (p !== null) { g.pi++; startProbe(cand, p); return; }
+    g.ci++; g.pi = 0;
+  }
+  guessFail();
+}
+function startProbe(cand, p0) {
+  const g = GUESS;
+  const t = perfS();
+  current = { title: cand.title, artist: cand.artist || '', videoId: cand.videoId, offsetSeconds: p0, epochMs: now(),
+    durationSeconds: cand.durationSeconds || null, hostOnly: false, ear: false, corr: 0, corrSrc: 'probe', probe: true, from: cand.from || g.why, qid: cand.qid || null };
+  current.nomO = p0 - t; current.noms = [current.nomO];
+  nudgeMs = 0; CTL.hold = false;
+  applyLine();
+  songTitle.textContent = cand.title + '?';
+  songArtist.textContent = cand.artist || '';
+  songBpm.textContent = '';
+  $('result').style.display = '';
+  say('Is it ' + cand.title + '? Checking by ear...');
+  CTL.cal = { stage: 'preroll', delta: 0, started: t, refFrom: earOldestPerf() + 0.2, hushUntil: 0, audibleFrom: null, t0: null, probe: true, p0 };
+  g.tried.push({ videoId: cand.videoId, p0: Math.round(p0) });
+  renderStamp();
+  ctlTick();
+}
+/* how alike the phone clip and the earlier room audio are at one lag, from minus one to one */
+function earPearson(feats, a0, M, refLo, refHi, k) {
+  const kk = Math.round(k), i0 = Math.max(0, refLo + kk - a0), i1 = Math.min(M, refHi + kk - a0);
+  let n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+  for (const on of feats) for (let i = i0; i < i1; i++) {
+    const y = on[a0 + i - kk];
+    if (y === 0) continue;
+    const x = on[a0 + i];
+    n++; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+  }
+  if (n < 0.6 * M * feats.length) return 0;
+  const cov = sxy - sx * sy / n, vx = sxx - sx * sx / n, vy = syy - sy * sy / n;
+  return vx > 0 && vy > 0 ? cov / Math.sqrt(vx * vy) : 0;
+}
+async function probeCompute(cal) {
+  const song = current;
+  cal.stage = 'compute';
+  const report = { kind: 'ear_probe', result: 'fail', guess: song.title, from: song.from, p0: Math.round(cal.p0) };
+  let lock = null, quiet = false;
+  try {
+    const oP = cal.oLine;
+    const seg = earSlice(cal.t0 - PROBE_LOOKBACK, cal.t0 + EAR_WIN);
+    if (!seg) throw new Error('no mic audio');
+    const feats = await earFeatures(seg.data, EAR.sr);
+    const fr = (t) => Math.round((t - seg.startPerf) / EAR_HOP);
+    const a0 = fr(cal.t0), M = Math.min(Math.round(EAR_WIN / EAR_HOP), feats[0].length - a0);
+    if (M < 250) throw new Error('clip too short');
+    const refLo = Math.max(1, fr(cal.refFrom)), refHi = Math.min(a0, fr(cal.audibleFrom));
+    for (const iv of OWN) {
+      if (!iv[3] || iv[0] >= cal.audibleFrom) continue;
+      const i0 = Math.max(0, fr(iv[0] - 0.5)), i1 = Math.min(refHi, fr(iv[1] + 0.9));
+      for (const on of feats) for (let i = i0; i < i1; i++) on[i] = 0;
+    }
+    const sr = EAR.sr, s0 = (cal.t0 - seg.startPerf) * sr;
+    const lvlClip = earRms(seg.data, s0, s0 + EAR_WIN * sr);
+    /* room loudness from the latest stretch where this phone was silent */
+    let qEnd = cal.audibleFrom;
+    for (let i = OWN.length - 1; i >= 0; i--) { const iv = OWN[i]; if (iv[0] >= qEnd) continue; if (iv[1] + 0.5 > qEnd - 2) qEnd = iv[0] - 0.3; }
+    const qFrom = Math.max(cal.refFrom, seg.startPerf, qEnd - EAR_WIN), quietSec = qEnd - qFrom;
+    const lvlRoom = quietSec >= 1.5 ? earRms(seg.data, (qFrom - seg.startPerf) * sr, (qEnd - seg.startPerf) * sr) : null;
+    report.rise = lvlRoom ? +(lvlClip / lvlRoom).toFixed(2) : null;
+    report.refSec = +((refHi - refLo) * EAR_HOP).toFixed(1);
+    if (lvlRoom !== null && (!(lvlRoom > 0) || lvlClip / lvlRoom < 1.15)) { quiet = true; throw new Error('phone copy not heard by the mic'); }
+    const peaks = earMatch(feats, a0, M, refLo, refHi, 60, a0);
+    peaks.forEach(p => { p.r = earPearson(feats, a0, M, refLo, refHi, p.k); });
+    peaks.sort((p, q) => q.r - p.r);
+    report.peaks = peaks.slice(0, 4).map(p => ({ lagMs: Math.round(p.k * EAR_HOP * 1000), z: +p.z.toFixed(1), r: +p.r.toFixed(3) }));
+    /* a real match stands well above everything else; a wrong song only gives a flat field of small bumps */
+    const top = peaks[0], r2 = peaks[1] ? Math.max(0, peaks[1].r) : 0;
+    if (!top || top.z < PROBE_ZMIN || top.r < PROBE_R || (top.r < 0.45 && top.r < 1.25 * r2)) throw new Error('no match');
+    const lag = top.k * EAR_HOP;
+    lock = { line: oP + lag, z: top.z };
+    report.result = 'locked'; report.z = +top.z.toFixed(1); report.r = +top.r.toFixed(3); report.lagMs = Math.round(lag * 1000);
+  } catch (err) { report.reason = String(err && err.message || err); }
+  earLog(report);
+  if (CTL.cal !== cal || current !== song) return;
+  endCal();
+  if (lock) guessWin(song, lock);
+  else if (quiet) guessStop(true, 'quiet');
+  else guessNext(report.reason);
+}
+function guessNext() { if (GUESS) guessStep(); }
+function guessWin(song, lock) {
+  GUESS = null;
+  song.probe = false;
+  song.nomO = lock.line; song.noms = [lock.line]; song.corr = 0; song.corrSrc = 'probe'; song.ear = true;
+  song.offsetSeconds = lock.line + perfS(); song.epochMs = now();
+  nudgeMs = 0;
+  applyLine();
+  songTitle.textContent = song.title;
+  songArtist.textContent = song.artist;
+  lastSeenAnchorKey = matchKey(song);
+  queueDrop(song);
+  say('');
+  pow('NAILED IT!');
+  logPlayEvent({ event: 'guess_locked', title: song.title, videoId: song.videoId, nudgeMs: 0 });
+  songLocked(song);
+  renderStamp();
+  ctlTick();
+}
+function guessRestore(g) {
+  current = g.prev;
+  nudgeMs = g.prevNudge;
+  if (current) { songTitle.textContent = current.title; songArtist.textContent = current.artist || ''; applyLine(); }
+  else { songTitle.textContent = ''; songArtist.textContent = ''; CTL.oT = null; }
+  renderStamp();
+}
+function guessStop(restore, why) {
+  const g = GUESS;
+  if (!g) return;
+  GUESS = null;
+  if (CTL.cal && CTL.cal.probe) endCal();
+  if (restore) guessRestore(g);
+  if (why === 'quiet') say('I could not hear this phone. Turn the volume up and try again.');
+}
+function guessFail() {
+  const g = GUESS;
+  GUESS = null;
+  guessRestore(g);
+  if (g.then === 'listen') { say(''); startListen(); return; }
+  say(g.list.length === 1 ? 'That is not ' + g.list[0].title + '. Tap Listen and I will find it.' : 'None of those match what is playing. Tap Listen and I will find it.');
+}
+
+/* ===== where am I, closely enough to tell one shop from the next ===== */
+let preciseLoc = null, preciseAt = 0;
+function getPreciseLocation() {
+  if (preciseLoc && Date.now() - preciseAt < 120000) return preciseLoc;
+  preciseAt = Date.now();
+  preciseLoc = new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: Math.round(pos.coords.latitude * 1e5) / 1e5, lng: Math.round(pos.coords.longitude * 1e5) / 1e5 }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 });
+  });
+  return preciseLoc;
+}
+
+/* ===== every locked song is logged to this spot and brings back what usually plays next here ===== */
+let PRED = [];
+async function songLocked(song) {
+  if (!song || !song.videoId || song.hostOnly) return;
+  const loc = await getPreciseLocation();
+  if (!loc || current !== song) return;
+  try {
+    await fetch('/api/venue-plays', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: song.title, artist: song.artist, videoId: song.videoId, durationSeconds: song.durationSeconds || null, lat: loc.lat, lng: loc.lng, deviceId, at: Date.now() }) });
+  } catch (e) {}
+  try {
+    const r = await fetch('/api/venue-plays?lat=' + loc.lat + '&lng=' + loc.lng + '&title=' + encodeURIComponent(song.title) + '&artist=' + encodeURIComponent(song.artist || ''), { cache: 'no-store' });
+    const d = await r.json();
+    if (current !== song) return;
+    PRED = (d.predictions || []).filter(x => x.title && songKey(x.title, x.artist) !== songKey(song.title, song.artist)).slice(0, 5)
+      .map(x => ({ title: x.title, artist: x.artist || '', videoId: x.videoId || null, from: 'prediction' }));
+  } catch (e) { PRED = []; }
+  renderChips();
+}
+
+/* ===== the announced queue: songs typed with Next, played in order ===== */
+let QUEUE = [];
+try { QUEUE = JSON.parse(localStorage.getItem('songsync:queue') || '[]'); if (!Array.isArray(QUEUE)) QUEUE = []; } catch (e) { QUEUE = []; }
+function queueSave() { try { localStorage.setItem('songsync:queue', JSON.stringify(QUEUE.slice(0, 12))); } catch (e) {} renderChips(); }
+function queueDrop(song) {
+  const k = songKey(song.title, song.artist);
+  const n = QUEUE.length;
+  QUEUE = QUEUE.filter(q => q.qid !== song.qid && q.videoId !== song.videoId && songKey(q.title, q.artist) !== k);
+  if (QUEUE.length !== n) queueSave();
+}
+function upcoming() {
+  const seen = new Set(), out = [];
+  QUEUE.concat(PRED).forEach(c => {
+    const k = c.videoId || songKey(c.title, c.artist);
+    if (seen.has(k) || (current && c.videoId && c.videoId === current.videoId)) return;
+    seen.add(k); out.push(Object.assign({}, c));
+  });
+  return out;
+}
+function renderChips() {
+  const box = $('nextChips');
+  const list = upcoming();
+  box.innerHTML = '';
+  list.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (c.from === 'queue' ? ' queued' : '');
+    b.textContent = c.title + (c.artist ? ' / ' + c.artist : '');
+    b.addEventListener('click', () => { if (!listening) startGuess([c], { why: 'chip', then: 'listen' }); });
+    box.appendChild(b);
+  });
+  $('nextRow').classList.toggle('empty', !list.length);
+}
+renderChips();
+
+/* ===== Name it: Now checks the typed song against the room, Next adds it to the queue ===== */
+async function nameNow() {
+  const q = $('nameInput').value.trim();
+  if (!q || listening) return;
+  unlockAudio();
+  say('Looking up ' + q + '...');
+  const list = await ytTop(q, 3);
+  if (!list.length) { say('I could not find ' + q + '. Try the artist too.'); return; }
+  list.forEach(x => { x.from = 'typed'; });
+  $('nameInput').value = '';
+  $('nameInput').blur();
+  startGuess(list, { why: 'typed', then: 'listen' });
+}
+async function nameNext() {
+  const q = $('nameInput').value.trim();
+  if (!q) return;
+  $('nameInput').value = '';
+  q.split(/\s*(?:,|;|\bthen\b|\n)\s*/i).filter(Boolean).forEach(part => {
+    QUEUE.push({ title: part, artist: '', videoId: null, from: 'queue', qid: Date.now().toString(36) + Math.random().toString(36).slice(2, 6) });
+  });
+  queueSave();
+  say('Got it. I will check for that when this song ends.');
+}
+$('nameNow').addEventListener('click', nameNow);
+$('nameNext').addEventListener('click', nameNext);
+$('nameInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') nameNow(); });
+
+/* ===== intro archive: sound prints of song openings, shared by every phone ===== */
+const PRINT_HOP = 0.02, PRINT_FROM = 1, PRINT_SEC = 8, PRINT_USE = 250;
+let PRINTS = [];
+function pool(on) { const n = Math.floor(on.length / 2), o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = Math.max(on[2 * i], on[2 * i + 1]); return o; }
+function printEncode(bands) { return bands.map(b => Array.from(b, v => Math.max(0, Math.min(35, Math.round((v + 1) * 5)))).map(q => q.toString(36)).join('')); }
+function printDecode(str) { const o = new Float32Array(str.length); for (let i = 0; i < str.length; i++) o[i] = parseInt(str[i], 36) / 5 - 1; return o; }
+function printVec(bands, from, n) {
+  const v = new Float32Array(bands.length * n);
+  bands.forEach((b, j) => { for (let i = 0; i < n; i++) { const x = from + i; v[j * n + i] = 2 * (b[x] || 0) + (b[x - 1] || 0) * (x > from ? 1 : 0) + (b[x + 1] || 0) * (i < n - 1 ? 1 : 0); } });
+  let m = 0; for (let i = 0; i < v.length; i++) m += v[i]; m /= v.length;
+  let s = 0; for (let i = 0; i < v.length; i++) { v[i] -= m; s += v[i] * v[i]; }
+  s = Math.sqrt(s) || 1; for (let i = 0; i < v.length; i++) v[i] /= s;
+  return v;
+}
+function addPrint(p) {
+  if (!p || !p.videoId || !Array.isArray(p.bands) || p.bands.length !== 3) return;
+  const bands = p.bands.map(printDecode);
+  if (bands.some(b => b.length < PRINT_USE)) return;
+  PRINTS = PRINTS.filter(x => x.videoId !== p.videoId);
+  PRINTS.push({ videoId: p.videoId, title: p.title, artist: p.artist || '', from: p.from || PRINT_FROM, vec: printVec(bands, 0, PRINT_USE) });
+}
+fetch('/api/intro-prints?top=150', { cache: 'no-store' }).then(r => r.json()).then(d => { (d.prints || []).forEach(addPrint); }).catch(() => {});
+async function introCapture(data, clipEndPerf) {
+  try {
+    if (!data || !data.videoId || !earReady()) return;
+    if (!(data.offsetSeconds >= PRINT_FROM + PRINT_SEC + 1 && data.offsetSeconds <= 25)) return;
+    if (PRINTS.some(p => p.videoId === data.videoId)) return;
+    const songStart = clipEndPerf - data.offsetSeconds, a = songStart + PRINT_FROM, b = a + PRINT_SEC;
+    if (OWN.some(iv => iv[2] !== data.videoId && iv[1] > a - 0.5 && iv[0] < b + 0.5)) return;
+    const seg = earSlice(a, b);
+    if (!seg || seg.data.length < (PRINT_SEC - 0.05) * EAR.sr) return;
+    const bands = (await earFeatures(seg.data, EAR.sr)).map(pool);
+    const rec = { videoId: data.videoId, title: data.title, artist: data.artist || '', hop: PRINT_HOP, from: PRINT_FROM, bands: printEncode(bands) };
+    addPrint(rec);
+    fetch('/api/intro-prints', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(rec) }).catch(() => {});
+  } catch (e) {}
+}
+/* look for any archived opening inside the last few seconds the mic heard */
+let introBusy = false;
+async function introDetect(excludeId) {
+  if (introBusy || !earReady() || !PRINTS.length) return null;
+  introBusy = true;
+  try {
+    const end = EAR.base + EAR.total / EAR.sr;
+    const seg = earSlice(end - 12, end);
+    if (!seg) return null;
+    const w = (await earFeatures(seg.data, EAR.sr)).map(pool);
+    const n = w[0].length, lags = n - PRINT_USE;
+    if (lags < 10) return null;
+    const wins = [];
+    for (let L = 0; L <= lags; L++) wins.push(printVec(w, L, PRINT_USE));
+    const scores = [];
+    for (const p of PRINTS) {
+      if (p.videoId === excludeId) continue;
+      let best = -1, bestL = 0;
+      for (let L = 0; L <= lags; L++) {
+        const v = wins[L];
+        let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * p.vec[i];
+        if (s > best) { best = s; bestL = L; }
+      }
+      scores.push({ p, s: best, L: bestL });
+    }
+    scores.sort((x, y) => y.s - x.s);
+    const top = scores[0], second = scores[1] ? scores[1].s : 0;
+    introDetect.last = top ? { title: top.p.title, s: +top.s.toFixed(3), second: +second.toFixed(3) } : null;
+    if (!top || top.s < 0.5 || top.s - second < 0.12) return null;
+    return { videoId: top.p.videoId, title: top.p.title, artist: top.p.artist, pos: top.p.from, at: seg.startPerf + top.L * PRINT_HOP, score: +top.s.toFixed(2) };
+  } catch (e) { return null; } finally { introBusy = false; }
+}
+
+/* ===== keep listening: when a song ends, try the intro archive, then the queue and predictions, then the recognizer ===== */
+let FOL = { key: null };
+setInterval(async () => {
+  if (!$('followToggle').checked || listening || GUESS || !current || current.hostOnly || current.probe || !EAR.stream) return;
   const dur = current.durationSeconds;
   if (!(typeof dur === 'number' && dur > 0)) return;
-  if (position() > dur + 4 && Date.now() - followAt > 25000) { followAt = Date.now(); startListen(); }
-}, 2000);
+  const pos = position();
+  if (pos < dur - 2) return;
+  const key = current.videoId + '|' + current.epochMs;
+  if (FOL.key !== key) FOL = { key, endPerf: perfS() + (dur - pos), tried: false, listenAt: 0 };
+  const song = current;
+  if (pos < dur + 12) {
+    const hit = await introDetect(song.videoId);
+    if (hit && current === song && !GUESS && !listening) {
+      earLog({ kind: 'intro_hit', guess: hit.title, score: hit.score });
+      startGuess([{ videoId: hit.videoId, title: hit.title, artist: hit.artist, from: 'intro' }], { hint: { pos: hit.pos, at: hit.at }, perCand: 1, why: 'intro', then: 'listen' });
+    }
+    return;
+  }
+  if (!FOL.tried) {
+    FOL.tried = true;
+    const list = upcoming().slice(0, 3);
+    if (list.length) { startGuess(list, { hint: { pos: 0, at: FOL.endPerf }, perCand: 1, why: 'follow', then: 'listen' }); return; }
+  }
+  if (Date.now() - FOL.listenAt > 25000) { FOL.listenAt = Date.now(); startListen(); }
+}, 1500);
 
 function reportActivePosition() {
   let title = null, videoId = null, pos = null, paused = false;
