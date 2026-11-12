@@ -865,7 +865,8 @@ function earMatch(feats, a0, M, refLo, refHi, kMin, kMax) {
     if (cs[j] > cs[j - 1] && cs[j] >= cs[j + 1]) {
       const den = cs[j - 1] - 2 * cs[j] + cs[j + 1];
       const d = den !== 0 ? 0.5 * (cs[j - 1] - cs[j + 1]) / den : 0;
-      peaks.push({ k: ks[j] + d, z: (cs[j] - med) / mad });
+      const zz = (cs[j] - med) / mad;
+      if (isFinite(zz)) peaks.push({ k: ks[j] + d, z: (cs[j] - med) / mad });
     }
   }
   peaks.sort((p, q) => q.z - p.z);
@@ -988,7 +989,8 @@ async function calCompute() {
     if (!seg) throw new Error('no mic audio');
     const feats = await earFeatures(seg.data, EAR.sr);
     const fr = (t) => Math.round((t - seg.startPerf) / EAR_HOP);
-    const a0 = fr(cal.t0), M = Math.round(EAR_WIN / EAR_HOP);
+    const a0 = fr(cal.t0), M = Math.min(Math.round(EAR_WIN / EAR_HOP), feats[0].length - a0);
+    if (M < 250) throw new Error('clip too short');
     const refLo = Math.max(1, fr(cal.refFrom)), refHi = Math.min(a0, fr(cal.audibleFrom));
     const peaks = earMatch(feats, a0, M, refLo, refHi, 60, a0);
     const kExp = (CTL.oT - delayMs / 1000 - oCal) / EAR_HOP;
@@ -1090,7 +1092,7 @@ function ctlTick() {
     if (Math.abs(e) > 3.5) { if (cal.audibleFrom === null) cal.audibleFrom = now; cal.t0 = null; ctlSeek(t); return; }
     if (cal.audibleFrom === null) cal.audibleFrom = now;
     if (cal.t0 === null) { cal.t0 = now; return; }
-    if (now >= cal.t0 + EAR_WIN + 0.15) { cal.oLine = o; calCompute(); }
+    if (now >= cal.t0 + EAR_WIN + 0.45) { cal.oLine = o; calCompute(); }
     return;
   }
   if (Math.abs(e) > 1 || (!CTL.rateOk && Math.abs(e) > 0.12)) { ctlSeek(t); return; }

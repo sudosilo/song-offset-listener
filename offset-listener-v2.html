@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<!-- BLUE PHONE: Song Offset Listener v2, the distilled build. The earlier build with every experiment lives at /classic and in offset-listener-v1.html -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#ffd23f">
+<title>Song Offset Listener</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #141414; --paper: #fffdf4; --cream: #fff6d6; --yellow: #ffd23f; --blue: #1a5fd0; --red: #ff4f5e; --cyan: #3ec7f0; --green: #43c46b; --pink: #ff8fc7; --purple: #9b6bff; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+  body {
+    font-family: 'Comic Neue', 'Comic Sans MS', sans-serif; font-weight: 700; color: var(--ink);
+    background-color: var(--cream);
+    background-image: radial-gradient(rgba(26,95,208,.18) 1.3px, transparent 1.4px);
+    background-size: 14px 14px;
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 12px 16px 40px; overflow-x: hidden;
+  }
+  .bang { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-weight: 400; }
+  .topbar { width: 100%; max-width: 460px; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  #menuBtn { width: 46px; height: 46px; flex: none; border: 3px solid var(--ink); border-radius: 10px; background: var(--yellow); box-shadow: 3px 3px 0 var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+  #menuBtn i { display: block; width: 20px; height: 3px; background: var(--ink); margin: 2px 0; border-radius: 2px; }
+  #menuBtn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  h1.logo { flex: 1; margin: 0; font-size: 2rem; line-height: 1; color: var(--yellow); -webkit-text-stroke: 1.5px var(--ink); text-shadow: 3px 3px 0 var(--blue); transform: rotate(-2deg); padding-right: 56px; }
+
+  /* the listen button is the phone's ear: rings ripple out of it while it hears */
+  .listenWrap { position: relative; width: 210px; height: 210px; display: grid; place-items: center; }
+  .ring { position: absolute; inset: 15px; border-radius: 50%; border: 4px solid var(--blue); opacity: 0; pointer-events: none; }
+  body.hearing .ring { animation: ripple 1.8s ease-out infinite; }
+  body.hearing .ring.r2 { animation-delay: .6s; border-color: var(--red); }
+  body.hearing .ring.r3 { animation-delay: 1.2s; border-color: var(--green); }
+  @keyframes ripple { 0% { transform: scale(.85); opacity: .9; } 100% { transform: scale(1.25); opacity: 0; } }
+  #listenBtn {
+    position: relative; font-family: 'Bangers', Impact, sans-serif; font-size: 2.5rem; letter-spacing: 2px; line-height: 1;
+    width: 176px; height: 176px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff3a8, var(--yellow) 62%);
+    border: 4px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
+    color: var(--red); -webkit-text-stroke: 1.3px var(--ink); cursor: pointer; padding: 0;
+  }
+  #listenBtn:active { transform: translate(4px, 4px); box-shadow: 2px 2px 0 var(--ink); }
+  body.hearing #listenBtn { color: var(--blue); background: radial-gradient(circle at 35% 30%, #ffffff, var(--cyan) 70%); }
+
+  /* what the mic hears, drawn as comic bars */
+  #earMeter { width: 100%; max-width: 300px; height: 46px; display: block; margin-top: 2px; }
+
+  /* speech bubble from the app */
+  #status {
+    margin-top: 12px; width: 100%; max-width: 340px; height: 3.5em; overflow: hidden; position: relative;
+    background: #fff; border: 3px solid var(--ink); border-radius: 18px; padding: 6px 12px;
+    font-size: 1rem; line-height: 1.25; display: flex; align-items: center; justify-content: center;
+  }
+  #status:empty { visibility: hidden; }
+
+  #result {
+    margin-top: 22px; width: 100%; max-width: 380px; position: relative;
+    background: #fff; border: 4px solid var(--ink); border-radius: 8px;
+    box-shadow: 7px 7px 0 var(--blue); padding: 26px 16px 14px;
+  }
+  #result::before { content: "NOW PLAYING"; position: absolute; top: -14px; left: 14px; background: var(--yellow); border: 3px solid var(--ink); padding: 2px 10px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1rem; transform: rotate(-3deg); z-index: 2; }
+  /* the stamp says what the sync is doing right now */
+  #stamp { position: absolute; top: -18px; right: 10px; z-index: 3; min-width: 96px; padding: 4px 12px; border: 3px solid var(--ink); border-radius: 8px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1.5px; font-size: 1.15rem; transform: rotate(5deg); background: #fff; }
+  #stamp:empty { display: none; }
+  #stamp.tuning { background: var(--yellow); animation: wobble .5s ease-in-out infinite alternate; }
+  #stamp.locked { background: var(--blue); color: #fff; }
+  #stamp.playing { background: var(--green); }
+  #stamp.paused { background: #ddd; }
+  #stamp.nocopy { background: var(--pink); }
+  @keyframes wobble { from { transform: rotate(2deg); } to { transform: rotate(8deg); } }
+  /* the little TV shows the copy this phone is playing */
+  .tv { width: 216px; height: 126px; margin: 0 auto 12px; border: 4px solid var(--ink); border-radius: 12px; background-color: var(--cyan); background-image: radial-gradient(rgba(20,20,20,.25) 1.5px, transparent 1.6px); background-size: 9px 9px; position: relative; overflow: hidden; box-shadow: 4px 4px 0 var(--ink); }
+  .tv::after { content: "ON AIR SOON"; position: absolute; inset: 0; display: grid; place-items: center; font-family: 'Bangers', Impact, sans-serif; font-size: 1.5rem; letter-spacing: 2px; color: #fff; -webkit-text-stroke: 1.2px var(--ink); z-index: 0; }
+  .tv.on::after { display: none; }
+  .tv iframe, .tv #syncPlayer { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; visibility: hidden; z-index: 1; }
+  .tv.on iframe, .tv.on #syncPlayer { visibility: visible; }
+  #songTitle { margin: 0; font-family: 'Bangers', Impact, sans-serif; font-weight: 400; letter-spacing: 1px; font-size: 1.9rem; line-height: 1.05; color: var(--blue); height: 2.1em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #songTitle:empty::before { content: "Tap listen near the music"; color: #b9b9b9; }
+  #inlineControls { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; }
+  #inlineControls button { white-space: nowrap; font-family: 'Bangers', Impact, sans-serif; font-size: 1.2rem; letter-spacing: 1px; padding: 8px 6px; border: 3px solid var(--ink); border-radius: 10px; box-shadow: 3px 3px 0 var(--ink); color: var(--ink); cursor: pointer; }
+  #inlineControls button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  #syncPauseBtn { background: var(--red); color: #fff !important; width: 96px; -webkit-text-stroke: .6px var(--ink); }
+  #nudgeBack { background: var(--cyan); width: 92px; }
+  #nudgeForward { background: var(--green); width: 92px; }
+  #songArtist { margin-top: 12px; font-size: 1.15rem; height: 1.4em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #songBpm { display: inline-block; margin-top: 8px; height: 1.9em; line-height: 1.5em; padding: 2px 12px; border: 3px solid var(--ink); border-radius: 999px; background: var(--pink); font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.1rem; }
+  #songBpm:empty { visibility: hidden; }
+  /* comic sound effect that pops over the panel */
+  #pow { position: absolute; left: 50%; top: 42%; z-index: 5; pointer-events: none; font-family: 'Bangers', Impact, sans-serif; font-size: 3.4rem; letter-spacing: 2px; color: var(--yellow); -webkit-text-stroke: 2px var(--ink); text-shadow: 4px 4px 0 var(--red); transform: translate(-50%, -50%) scale(0) rotate(-8deg); opacity: 0; white-space: nowrap; }
+  #pow.go { animation: pow 1.1s ease-out; }
+  @keyframes pow { 0% { transform: translate(-50%, -50%) scale(.2) rotate(-14deg); opacity: 0; } 25% { transform: translate(-50%, -50%) scale(1.15) rotate(-6deg); opacity: 1; } 70% { transform: translate(-50%, -50%) scale(1) rotate(-8deg); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.3) rotate(-8deg); opacity: 0; } }
+  #feedPlayer { width: 1px; height: 1px; overflow: hidden; }
+
+  #manualSection { margin-top: 28px; width: 100%; max-width: 380px; }
+  #manualLabel { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.15rem; color: var(--blue); margin-bottom: 6px; }
+  #searchBox { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  #searchInput { flex: 1; min-width: 0; padding: 12px; font-size: 1rem; font-family: 'Comic Neue', sans-serif; font-weight: 700; border: 3px solid var(--ink); border-radius: 10px; background: #fff; color: var(--ink); }
+  #searchBtn { padding: 10px 16px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.2rem; border: 3px solid var(--ink); border-radius: 10px; background: var(--pink); box-shadow: 3px 3px 0 var(--ink); color: var(--ink); }
+  #searchBtn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  #searchResults { width: 100%; margin-top: 12px; text-align: left; }
+  .searchItem { display: flex; align-items: center; gap: 10px; padding: 8px; margin-bottom: 8px; background: #fff; border: 3px solid var(--ink); border-radius: 10px; cursor: pointer; }
+  .searchItem img { width: 60px; height: 45px; border-radius: 6px; border: 2px solid var(--ink); }
+  .searchItem .meta { font-size: 0.9rem; }
+  .searchItem .meta .c { color: #666; font-size: 0.8rem; }
+  #broadcastPanel { display: none; margin-top: 16px; background: #fff; border: 4px solid var(--ink); border-radius: 8px; box-shadow: 6px 6px 0 var(--red); padding: 14px; }
+  #hostPlayer { width: 100%; max-width: 320px; aspect-ratio: 16/9; margin: 12px auto; }
+  #broadcastBtn { padding: 12px 22px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.3rem; border-radius: 10px; border: 3px solid var(--ink); background: var(--yellow); box-shadow: 3px 3px 0 var(--ink); color: var(--ink); cursor: pointer; }
+  #broadcastStatus { margin-top: 10px; font-size: 0.9rem; color: #555; }
+  #audioUnlock { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; width: calc(100% - 32px); max-width: 340px; padding: 12px; background: var(--yellow); border: 3px solid var(--ink); border-radius: 12px; box-shadow: 4px 4px 0 var(--ink); }
+  #audioUnlockBtn { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.2rem; padding: 8px 18px; border: 3px solid var(--ink); border-radius: 10px; background: #fff; color: var(--ink); }
+
+  #drawerShade { position: fixed; inset: 0; background: rgba(20,20,20,.25); z-index: 60; display: none; }
+  #drawerShade.open { display: block; }
+  #drawer {
+    position: fixed; top: 0; left: 0; bottom: 0; width: min(86vw, 380px); z-index: 61;
+    background-color: var(--paper); background-image: radial-gradient(rgba(255,79,94,.14) 1.2px, transparent 1.3px); background-size: 12px 12px;
+    border-right: 4px solid var(--ink); box-shadow: 6px 0 0 var(--blue);
+    transform: translateX(-110%); transition: transform .2s ease; overflow-y: auto; text-align: left; padding: 14px 14px 40px; font-weight: 400;
+  }
+  #drawer.open { transform: translateX(0); }
+  .drawerHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .drawerHead b { font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.7rem; color: var(--blue); font-weight: 400; }
+  #drawerClose { font-family: 'Bangers', Impact, sans-serif; font-size: 1.1rem; letter-spacing: 1px; padding: 6px 12px; border: 3px solid var(--ink); border-radius: 10px; background: var(--red); color: #fff; box-shadow: 3px 3px 0 var(--ink); }
+  details.sect { margin-bottom: 12px; background: #fff; border: 3px solid var(--ink); border-radius: 10px; box-shadow: 4px 4px 0 var(--ink); }
+  details.sect > summary { cursor: pointer; list-style: none; padding: 10px 12px; font-family: 'Bangers', Impact, sans-serif; letter-spacing: 1px; font-size: 1.25rem; color: var(--ink); background: var(--yellow); border-radius: 7px; }
+  details.sect > summary::-webkit-details-marker { display: none; }
+  details.sect > summary::after { content: " +"; color: var(--blue); }
+  details.sect[open] > summary::after { content: " -"; }
+  details.sect[open] > summary { border-bottom: 3px solid var(--ink); border-radius: 7px 7px 0 0; }
+  .sectBody { padding: 10px 12px; font-size: 0.95rem; }
+  .sectBody button { font-family: 'Comic Neue', sans-serif; font-weight: 700; padding: 6px 10px; border: 2px solid var(--ink); border-radius: 8px; background: #eaf1fb; color: var(--ink); }
+  .sectBody label { display: block; padding: 6px 0; font-weight: 700; }
+  .appLink { display: block; padding: 10px 12px; margin-bottom: 8px; border: 2px solid var(--ink); border-radius: 8px; text-decoration: none; color: var(--ink) !important; background: #eaf1fb; font-weight: 700; }
+  .appLink.here { background: var(--cyan); }
+  .feedItem { border-bottom: 2px dashed #ccc; padding: 8px 0; cursor: pointer; }
+  .feedItem .ft { color: var(--blue); font-size: 1rem; font-weight: 700; }
+  .feedItem .fa { color: #444; font-size: 0.85rem; }
+  .feedItem .fs { color: #888; font-size: 0.75rem; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <button id="menuBtn" aria-label="Menu"><i></i><i></i><i></i></button>
+    <h1 class="logo bang">Song Offset Listener</h1>
+  </header>
+
+  <div class="listenWrap">
+    <span class="ring"></span><span class="ring r2"></span><span class="ring r3"></span>
+    <button id="listenBtn">Listen</button>
+  </div>
+  <canvas id="earMeter"></canvas>
+  <div id="status"></div>
+
+  <div id="result">
+    <div id="stamp"></div>
+    <div id="pow"></div>
+    <div class="tv" id="tv"><div id="syncPlayer"></div></div>
+    <h2 id="songTitle"></h2>
+    <div id="inlineControls">
+      <button id="syncPauseBtn">Pause</button>
+      <button id="nudgeBack">- 0.5s</button>
+      <button id="nudgeForward">+ 0.5s</button>
+    </div>
+    <div id="songArtist"></div>
+    <div id="songBpm"></div>
+    <div id="feedPlayer"></div>
+  </div>
+
+  <div id="manualSection">
+    <div id="manualLabel">Find a song</div>
+    <div id="searchBox">
+      <input id="searchInput" type="text" placeholder="song or artist">
+      <button id="searchBtn">Search</button>
+      <div id="searchResults"></div>
+    </div>
+    <div id="broadcastPanel">
+      <div id="chosenTitle" style="color:#1a5fd0;font-size:1.1rem;"></div>
+      <div id="hostPlayer"></div>
+      <button id="broadcastBtn">Play and Broadcast</button>
+      <div id="broadcastStatus"></div>
+    </div>
+  </div>
+
+  <div id="audioUnlock" style="display:none;">
+    <div style="font-size:0.95rem; margin-bottom:8px;">Tap once to let this phone play music</div>
+    <button id="audioUnlockBtn">Enable Audio</button>
+  </div>
+
+  <div id="drawerShade"></div>
+  <aside id="drawer" aria-label="Menu">
+    <div class="drawerHead"><b>Menu</b><button id="drawerClose">Close</button></div>
+    <details class="sect" open>
+      <summary>Apps</summary>
+      <div class="sectBody">
+        <a class="appLink here" href="/">Song Offset Listener</a>
+        <a class="appLink" href="/zone">Zone Director</a>
+        <a class="appLink" href="/classic">Classic listener, every old experiment</a>
+      </div>
+    </details>
+    <details class="sect">
+      <summary>Heard across all phones</summary>
+      <div class="sectBody">
+        <div id="feedList"></div>
+        <div id="feedPlayerStatus" style="margin-top:8px; font-size:0.85rem; color:#666;"></div>
+        <button id="feedPauseBtn" style="display:none; margin-top:6px;">Pause</button>
+      </div>
+    </details>
+    <details class="sect">
+      <summary>Nearby broadcasts</summary>
+      <div class="sectBody"><div id="nearbyList"></div></div>
+    </details>
+    <details class="sect">
+      <summary>Live positions</summary>
+      <div class="sectBody"><div id="positionsList"></div></div>
+    </details>
+    <details class="sect">
+      <summary>Settings</summary>
+      <div class="sectBody">
+        <label><input type="checkbox" id="earToggle" checked> Ear lock: the phone hears its own copy and snaps it onto the room</label>
+        <label><input type="checkbox" id="followToggle"> Keep listening: find the next song when this one ends</label>
+      </div>
+    </details>
+  </aside>
+
+<script>
+/* BLUE PHONE: Song Offset Listener v2 */
+const $ = (id) => document.getElementById(id);
+const listenBtn = $('listenBtn'), statusEl = $('status');
+const songTitle = $('songTitle'), songArtist = $('songArtist'), songBpm = $('songBpm');
+const RECORD_MS = 9000;
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function perfS() { return performance.now() / 1000; }
+function say(t) { statusEl.textContent = t || ''; }
+function pow(word) { const el = $('pow'); el.textContent = word; el.classList.remove('go'); void el.offsetWidth; el.classList.add('go'); }
+function lsNum(k, d) { try { const v = parseFloat(localStorage.getItem(k)); return isFinite(v) ? v : d; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
+function median(list) { const s = list.slice().sort((a, b) => a - b), m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+function formatOffset(seconds) {
+  if (seconds === null || seconds === undefined) return '--:--';
+  const m = Math.floor(seconds / 60), s = (seconds % 60).toFixed(1);
+  return m + ':' + s.padStart(4, '0');
+}
+function getDeviceId() {
+  let id = null;
+  try { id = localStorage.getItem('songsync:deviceId'); } catch (e) {}
+  if (!id) { id = 'phone-' + Math.random().toString(36).slice(2, 8); try { localStorage.setItem('songsync:deviceId', id); } catch (e) {} }
+  return id;
+}
+const deviceId = getDeviceId();
+async function logPlayEvent(details) {
+  try {
+    await fetch('/api/play-log', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(Object.assign({ deviceId, playedAtEpochMs: Date.now() }, details)) });
+  } catch (err) {}
+}
+
+/* menu */
+(function () {
+  const d = $('drawer'), sh = $('drawerShade');
+  const close = () => { d.classList.remove('open'); sh.classList.remove('open'); };
+  $('menuBtn').addEventListener('click', (e) => { e.stopPropagation(); d.classList.add('open'); sh.classList.add('open'); });
+  $('drawerClose').addEventListener('click', close);
+  sh.addEventListener('click', close);
+})();
+
+/* ===== clock shared with the server ===== */
+let clockOffsetMs = 0;
+let hasCalibratedOnce = false;
+async function calibrateClock() {
+  const samples = [];
+  for (let i = 0; i < 5; i++) {
+    const t0 = Date.now();
+    try {
+      const res = await fetch('/api/time', { cache: 'no-store' });
+      const data = await res.json();
+      const t1 = Date.now();
+      const rtt = t1 - t0;
+      samples.push({ offset: (data.serverTime + rtt / 2) - t1, rtt });
+    } catch (err) {}
+  }
+  if (samples.length === 0) return;
+  samples.sort((a, b) => a.rtt - b.rtt);
+  const freshOffset = samples[0].offset;
+  if (!hasCalibratedOnce) {
+    clockOffsetMs = freshOffset;
+    hasCalibratedOnce = true;
+  } else {
+    const drift = freshOffset - clockOffsetMs;
+    clockOffsetMs += drift * 0.5;
+  }
+}
+function now() { return Date.now() + clockOffsetMs; }
+calibrateClock();
+setInterval(calibrateClock, 75000);
+
+/* ===== tempo from the recorded clip ===== */
+async function detectBpmFromBlob(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let audioBuffer;
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  } catch (err) {
+    audioCtx.close();
+    return null;
+  }
+
+  const sampleRate = audioBuffer.sampleRate;
+  const raw = audioBuffer.getChannelData(0);
+
+  const frameSize = Math.max(1, Math.round(sampleRate * 0.01));
+  const frameCount = Math.floor(raw.length / frameSize);
+  if (frameCount < 20) { audioCtx.close(); return null; }
+
+  const envelope = new Float32Array(frameCount);
+  for (let i = 0; i < frameCount; i++) {
+    let sum = 0;
+    const start = i * frameSize;
+    for (let j = 0; j < frameSize; j++) {
+      const v = raw[start + j];
+      sum += v * v;
+    }
+    envelope[i] = Math.sqrt(sum / frameSize);
+  }
+
+  let mean = 0;
+  for (let i = 0; i < frameCount; i++) mean += envelope[i];
+  mean /= frameCount;
+  let variance = 0;
+  for (let i = 0; i < frameCount; i++) variance += (envelope[i] - mean) * (envelope[i] - mean);
+  variance /= frameCount;
+  audioCtx.close();
+  if (variance < 1e-10) return null;
+
+  const norm = new Float32Array(frameCount);
+  const sd = Math.sqrt(variance);
+  for (let i = 0; i < frameCount; i++) norm[i] = (envelope[i] - mean) / sd;
+
+  const frameHopSeconds = frameSize / sampleRate;
+  const minBpm = 60, maxBpm = 200;
+  const minLagSec = 60 / maxBpm;
+  const maxLagSec = 60 / minBpm;
+  const minLagFrames = Math.max(1, Math.round(minLagSec / frameHopSeconds));
+  const maxLagFrames = Math.min(frameCount - 1, Math.round(maxLagSec / frameHopSeconds));
+
+  let bestLag = -1;
+  let bestScore = -Infinity;
+  for (let lag = minLagFrames; lag <= maxLagFrames; lag++) {
+    const n = frameCount - lag;
+    if (n < frameCount * 0.3) break;
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += norm[i] * norm[i + lag];
+    const score = sum / n;
+    if (score > bestScore) {
+      bestScore = score;
+      bestLag = lag;
+    }
+  }
+
+  if (bestLag < 0 || bestScore < 0.1) return null;
+
+  const beatSeconds = bestLag * frameHopSeconds;
+  let bpm = 60 / beatSeconds;
+  while (bpm < 90) bpm *= 2;
+  while (bpm > 180) bpm /= 2;
+  return Math.round(bpm);
+}
+
+
+/* ===== YouTube loader ===== */
+let ytApiLoading = false;
+const ytApiQueue = [];
+function whenYouTubeReady(cb) {
+  if (window.YT && window.YT.Player) { cb(); return; }
+  ytApiQueue.push(cb);
+  if (ytApiLoading) return;
+  ytApiLoading = true;
+  window.onYouTubeIframeAPIReady = function () {
+    const q = ytApiQueue.splice(0);
+    q.forEach(function (f) { try { f(); } catch (err) {} });
+  };
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.body.appendChild(tag);
+}
+
+/* ===== the ear: one mic stream that stays open, a rolling recording of the room, and a meter ===== */
+const EAR_RING_SEC = 44, EAR_HOP = 0.01, EAR_WIN = 4, EAR_ZMIN = 7, EAR_LOOKBACK = 28;
+const EAR_BANDS = [{ type: 'lowpass', f: 200 }, { type: 'bandpass', f: 1000, q: 0.7 }, { type: 'highpass', f: 4000 }];
+const EAR = { ring: null, total: 0, sr: 0, cands: [], base: null, ctx: null, stream: null, analyser: null, freq: null, opening: null };
+function earReady() { return !!EAR.ring && EAR.base !== null; }
+function earMicOn() {
+  if (EAR.stream && EAR.ctx && EAR.ctx.state !== 'closed') { try { if (EAR.ctx.state === 'suspended') EAR.ctx.resume(); } catch (e) {} return Promise.resolve(true); }
+  if (EAR.opening) return EAR.opening;
+  EAR.opening = (async () => {
+    try {
+      EAR.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    } catch (err) { EAR.stream = null; return false; }
+    EAR.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    try { if (EAR.ctx.state === 'suspended') await EAR.ctx.resume(); } catch (e) {}
+    EAR.sr = EAR.ctx.sampleRate;
+    EAR.ring = new Float32Array(Math.round(EAR.sr * EAR_RING_SEC));
+    EAR.total = 0; EAR.cands = []; EAR.base = null;
+    const src = EAR.ctx.createMediaStreamSource(EAR.stream);
+    EAR.analyser = EAR.ctx.createAnalyser(); EAR.analyser.fftSize = 256; EAR.analyser.smoothingTimeConstant = 0.7;
+    EAR.freq = new Uint8Array(EAR.analyser.frequencyBinCount);
+    src.connect(EAR.analyser);
+    const node = EAR.ctx.createScriptProcessor(4096, 1, 1), sink = EAR.ctx.createGain();
+    sink.gain.value = 0;
+    src.connect(node); node.connect(sink); sink.connect(EAR.ctx.destination);
+    node.onaudioprocess = (e) => {
+      const d = e.inputBuffer.getChannelData(0), L = EAR.ring.length;
+      let w = EAR.total % L;
+      for (let i = 0; i < d.length; i++) { EAR.ring[w] = d[i]; w++; if (w === L) w = 0; }
+      EAR.total += d.length;
+      const at = perfS();
+      EAR.cands.push({ at, c: at - EAR.total / EAR.sr });
+      while (EAR.cands.length && at - EAR.cands[0].at > 30) EAR.cands.shift();
+      let m = Infinity;
+      for (const x of EAR.cands) if (x.c < m) m = x.c;
+      EAR.base = m;
+    };
+    EAR.node = node;
+    return true;
+  })().finally(() => { EAR.opening = null; });
+  return EAR.opening;
+}
+function earOldestPerf() { return EAR.base + Math.max(0, EAR.total - EAR.ring.length) / EAR.sr; }
+function earSlice(fromPerf, toPerf) {
+  const L = EAR.ring.length, oldest = Math.max(0, EAR.total - L);
+  const a = Math.max(oldest, Math.round((fromPerf - EAR.base) * EAR.sr));
+  const b = Math.min(EAR.total, Math.round((toPerf - EAR.base) * EAR.sr));
+  if (b - a < EAR.sr) return null;
+  const out = new Float32Array(b - a);
+  let r = a % L;
+  for (let i = 0; i < out.length; i++) { out[i] = EAR.ring[r]; r++; if (r === L) r = 0; }
+  return { data: out, startPerf: EAR.base + a / EAR.sr };
+}
+function wavBlob(data, rate) {
+  const pcm = new Int16Array(data.length);
+  for (let i = 0; i < data.length; i++) { const v = Math.max(-1, Math.min(1, data[i])); pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff; }
+  const buf = new ArrayBuffer(44 + pcm.length * 2), dv = new DataView(buf);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  str(36, 'data'); dv.setUint32(40, pcm.length * 2, true);
+  new Int16Array(buf, 44).set(pcm);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+async function earFeatures(data, sr) {
+  const hop = Math.round(sr * EAR_HOP), out = [];
+  for (const b of EAR_BANDS) {
+    const off = new OfflineAudioContext(1, data.length, sr);
+    const buf = off.createBuffer(1, data.length, sr);
+    buf.getChannelData(0).set(data);
+    const s = off.createBufferSource(); s.buffer = buf;
+    const f = off.createBiquadFilter(); f.type = b.type; f.frequency.value = b.f; if (b.q) f.Q.value = b.q;
+    s.connect(f); f.connect(off.destination); s.start(0);
+    const x = (await off.startRendering()).getChannelData(0);
+    const n = Math.floor(x.length / hop), env = new Float32Array(n), on = new Float32Array(n);
+    for (let i = 0; i < n; i++) { let sum = 0; for (let j = i * hop; j < (i + 1) * hop; j++) sum += x[j] * x[j]; env[i] = Math.log(1e-7 + Math.sqrt(sum / hop)); }
+    for (let i = 1; i < n; i++) on[i] = Math.max(0, env[i] - env[i - 1]);
+    let mean = 0; for (let i = 0; i < n; i++) mean += on[i]; mean /= Math.max(1, n);
+    let v = 0; for (let i = 0; i < n; i++) v += (on[i] - mean) * (on[i] - mean);
+    const sd = Math.sqrt(v / Math.max(1, n)) || 1;
+    for (let i = 0; i < n; i++) on[i] = (on[i] - mean) / sd;
+    out.push(on);
+  }
+  return out;
+}
+function earRms(data, a, b) {
+  a = Math.max(0, Math.round(a)); b = Math.min(data.length, Math.round(b));
+  if (b - a < 100) return 0;
+  let s = 0; for (let i = a; i < b; i++) s += data[i] * data[i];
+  return Math.sqrt(s / (b - a));
+}
+/* match the clip holding the phone's copy against earlier room audio, by lag in frames */
+function earMatch(feats, a0, M, refLo, refHi, kMin, kMax) {
+  const need = Math.floor(M * 0.6), ks = [], cs = [];
+  for (let k = kMin; k <= kMax; k++) {
+    const i0 = Math.max(0, refLo + k - a0), i1 = Math.min(M, refHi + k - a0);
+    if (i1 - i0 < need) continue;
+    let s = 0;
+    for (const on of feats) for (let i = i0; i < i1; i++) s += on[a0 + i] * on[a0 + i - k];
+    ks.push(k); cs.push(s / ((i1 - i0) * feats.length));
+  }
+  if (cs.length < 50) return [];
+  const sorted = cs.slice().sort((x, y) => x - y), med = sorted[Math.floor(cs.length / 2)];
+  const dev = cs.map(x => Math.abs(x - med)).sort((x, y) => x - y);
+  const mad = dev[Math.floor(cs.length / 2)] * 1.4826 + 1e-9, peaks = [];
+  for (let j = 1; j < cs.length - 1; j++) {
+    if (ks[j + 1] - ks[j - 1] !== 2) continue;
+    if (cs[j] > cs[j - 1] && cs[j] >= cs[j + 1]) {
+      const den = cs[j - 1] - 2 * cs[j] + cs[j + 1];
+      const zz = (cs[j] - med) / mad;
+      if (isFinite(zz)) peaks.push({ k: ks[j] + (den !== 0 ? 0.5 * (cs[j - 1] - cs[j + 1]) / den : 0), z: (cs[j] - med) / mad });
+    }
+  }
+  peaks.sort((p, q) => q.z - p.z);
+  const picked = [];
+  for (const p of peaks) { if (picked.length >= 6) break; if (picked.every(q => Math.abs(q.k - p.k) >= 8)) picked.push(p); }
+  return picked;
+}
+/* ear meter: comic bars for what the mic hears */
+(function drawMeter() {
+  const c = $('earMeter'), g = c.getContext('2d');
+  const colors = ['#ff4f5e', '#ff8a3d', '#ffd23f', '#43c46b', '#3ec7f0', '#1a5fd0', '#9b6bff', '#ff8fc7'];
+  function frame() {
+    const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+    if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const bars = 16, gap = 4, bw = (w - gap * (bars - 1)) / bars;
+    if (EAR.analyser) EAR.analyser.getByteFrequencyData(EAR.freq);
+    for (let i = 0; i < bars; i++) {
+      let m = 0;
+      if (EAR.analyser) {
+        const a = Math.floor(Math.pow(i / bars, 1.6) * 90), b = Math.max(a + 1, Math.floor(Math.pow((i + 1) / bars, 1.6) * 90));
+        for (let j = a; j < b; j++) m = Math.max(m, EAR.freq[j]);
+      }
+      const bh = Math.max(5, (m / 255) * (h - 4));
+      g.fillStyle = colors[i % colors.length];
+      g.strokeStyle = '#141414'; g.lineWidth = 2;
+      g.beginPath(); g.rect(i * (bw + gap) + 1, h - bh - 1, bw - 2, bh); g.fill(); g.stroke();
+    }
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+/* ===== the song this phone is following ===== */
+let current = null;
+let audioOn = true;
+let nudgeMs = 0;
+let listening = false;
+let awaitingOwnRecognition = false;
+let lastSeenAnchorKey = null;
+let player = null, playerReady = false, playerState = -1, loadedVideo = null;
+let audioUnlocked = false;
+const audioUnlockEl = $('audioUnlock');
+
+function position() { return current ? current.offsetSeconds + (now() - current.epochMs) / 1000 : 0; }
+function matchKey(m) { return (m && m.videoId ? m.videoId : '') + '|' + Math.round(m && m.epochMs ? m.epochMs : 0); }
+function anchorIsStale(data) {
+  if (typeof data.epochMs !== 'number') return false;
+  const elapsed = (now() - data.epochMs) / 1000, projected = (data.offsetSeconds || 0) + elapsed, duration = data.videoDurationSeconds;
+  if (typeof duration === 'number' && duration > 0) return projected >= duration;
+  return elapsed > 360;
+}
+function wantAudio() { return audioOn && audioUnlocked && !!current && !!current.videoId && !current.hostOnly && CTL.oT !== null && !CTL.hold; }
+
+function ensurePlayer() {
+  if (player) return;
+  whenYouTubeReady(() => {
+    if (player) return;
+    player = new YT.Player('syncPlayer', {
+      height: '126', width: '216',
+      playerVars: { controls: 0, playsinline: 1, rel: 0, disablekb: 1, fs: 0, iv_load_policy: 3 },
+      events: {
+        onReady: () => { playerReady = true; ctlTick(); },
+        onStateChange: (e) => {
+          playerState = e.data;
+          if (e.data === 1 && !wantAudio()) { try { player.pauseVideo(); } catch (err) {} }
+          renderStamp();
+        },
+        onError: (e) => { logPlayEvent({ event: 'sync_player_error', title: current ? current.title : null, videoId: current ? current.videoId : null, nudgeMs, errorMessage: 'youtube error ' + (e && e.data) }); }
+      }
+    });
+  });
+}
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  audioUnlockEl.style.display = 'none';
+  ensurePlayer();
+}
+$('audioUnlockBtn').addEventListener('click', unlockAudio);
+document.body.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+document.body.addEventListener('click', unlockAudio, { once: true });
+
+function renderStamp() {
+  const el = $('stamp');
+  let text = '', cls = '';
+  const playing = playerState === 1 && wantAudio();
+  if (current && !current.videoId) { text = 'NO COPY'; cls = 'nocopy'; }
+  else if (CTL.cal) { text = 'TUNING'; cls = 'tuning'; }
+  else if (current && current.videoId && !current.hostOnly && !audioOn) { text = 'PAUSED'; cls = 'paused'; }
+  else if (playing && current.ear) { text = 'LOCKED!'; cls = 'locked'; }
+  else if (playing) { text = 'PLAYING'; cls = 'playing'; }
+  el.textContent = text; el.className = cls;
+  $('tv').classList.toggle('on', !!current && !current.hostOnly && (playerState === 1 || playerState === 3) && audioOn);
+  $('syncPauseBtn').textContent = audioOn ? 'Pause' : 'Play';
+}
+
+function activateMatch(data, isMine, hostOnly) {
+  if (!isMine && anchorIsStale(data)) { lastSeenAnchorKey = matchKey(data); return; }
+  lastSeenAnchorKey = matchKey(data);
+  if (!isMine) songBpm.textContent = data.bpm ? Math.round(data.bpm) + ' BPM' : '';
+
+  const sameSong = current && data.videoId && current.videoId === data.videoId && !current.hostOnly && !hostOnly;
+  if (sameSong) {
+    if (isMine) {
+      const held = CTL.hold;
+      CTL.hold = false;
+      current.offsetSeconds = data.offsetSeconds; current.epochMs = typeof data.epochMs === 'number' ? data.epochMs : now();
+      setNominal(false);
+      if (audioOn && (held || !current.ear)) startCal(held ? 6.5 : 10);
+    }
+    renderStamp();
+    return;
+  }
+
+  CTL.hold = false;
+  if (CTL.cal) endCal();
+  current = {
+    title: data.title, artist: data.artist || '', videoId: data.videoId || null,
+    offsetSeconds: data.offsetSeconds || 0, epochMs: typeof data.epochMs === 'number' ? data.epochMs : now(),
+    durationSeconds: data.videoDurationSeconds || null, hostOnly: !!hostOnly, ear: false, corr: 0, corrSrc: 'none'
+  };
+  songTitle.textContent = current.title;
+  songArtist.textContent = current.artist;
+  nudgeMs = 0;
+  if (!current.videoId) { CTL.oT = null; renderStamp(); return; }
+  if (!isMine) logPlayEvent({ event: 'remote_anchor_detected', title: data.title, videoId: data.videoId, nudgeMs: 0 });
+  primeSong(current);
+  if (!hostOnly) {
+    if (audioUnlocked) ensurePlayer(); else audioUnlockEl.style.display = 'block';
+    if (audioOn) {
+      if (earReady()) startCal(10);
+      else if ($('earToggle').checked) earMicOn().then(ok => { if (ok && current && !current.ear && !CTL.cal && audioOn) setTimeout(() => startCal(10), 300); });
+    }
+  }
+  renderStamp();
+  ctlTick();
+}
+
+async function pollRemoteAnchor() {
+  if (awaitingOwnRecognition || listening) return;
+  const loc = await getMyLocation();
+  if (!loc) return;
+  try {
+    const res = await fetch('/api/anchor?lat=' + loc.lat + '&lng=' + loc.lng, { cache: 'no-store' });
+    const anchor = await res.json();
+    if (!anchor || anchor.error || !anchor.videoId || typeof anchor.epochMs !== 'number') return;
+    if ((Date.now() - anchor.epochMs) > 3600000) return;
+    const key = matchKey(anchor);
+    if (key === lastSeenAnchorKey) return;
+    lastSeenAnchorKey = key;
+    if (current && current.videoId === anchor.videoId) return;
+    activateMatch(anchor, false);
+  } catch (err) {}
+}
+setInterval(pollRemoteAnchor, 1500);
+
+/* ===== listen ===== */
+function recordWebmClip(stream) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    let recorder;
+    try {
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch (e) { setTimeout(() => resolve(new Blob([])), RECORD_MS); return; }
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
+    recorder.start(1000);
+    setTimeout(() => { try { recorder.stop(); } catch (e) { resolve(new Blob(chunks)); } }, RECORD_MS);
+  });
+}
+async function sendClip(blob, capturedAt, ms, name) {
+  const form = new FormData();
+  form.append('audio', blob, name);
+  form.append('capturedAt', String(capturedAt));
+  form.append('clipDurationMs', String(ms));
+  const loc = await getMyLocation();
+  if (loc) { form.append('lat', String(loc.lat)); form.append('lng', String(loc.lng)); }
+  let localBpm = null;
+  try { localBpm = await detectBpmFromBlob(blob); } catch (e) {}
+  if (localBpm) form.append('localBpm', String(localBpm));
+  const res = await fetch('/api/recognize', { method: 'POST', body: form });
+  return { data: await res.json(), localBpm };
+}
+async function startListen() {
+  if (listening) return;
+  listening = true;
+  document.body.classList.add('hearing');
+  listenBtn.textContent = 'Hearing';
+  say('Getting my ears on...');
+  const finish = () => { listening = false; awaitingOwnRecognition = false; document.body.classList.remove('hearing'); listenBtn.textContent = 'Listen'; };
+  const micOk = await earMicOn();
+  if (!micOk) { say('I need the microphone to hear the music. Allow it and tap Listen again.'); finish(); return; }
+
+  const side = (broadcasting && hostPlayer) ? hostPlayer : (pendingFeedEntry && feedPlayerReady && feedPlayer) ? feedPlayer : null;
+  let sideMuted = false;
+  try { if (side && !side.isMuted()) { side.mute(); sideMuted = true; } } catch (e) {}
+  if (wantAudio() && (playerState === 1 || playerState === 3)) { CTL.hold = true; if (CTL.cal) endCal(); ctlTick(); }
+  awaitingOwnRecognition = true;
+  try {
+    say('Listening...');
+    const recStart = perfS(), capturedAt = now();
+    const blob = await recordWebmClip(EAR.stream);
+    say('Who sings this...');
+    let result = blob.size > 4000 ? await sendClip(blob, capturedAt, RECORD_MS, 'clip.webm') : null;
+    const bad = !result || (result.data && result.data.error && /fingerprint|audio file|no audio/i.test(result.data.error));
+    if (bad) {
+      const seg = earSlice(recStart, recStart + RECORD_MS / 1000);
+      if (seg) {
+        result = await sendClip(wavBlob(seg.data, EAR.sr), capturedAt, Math.round(seg.data.length / EAR.sr * 1000), 'clip.wav');
+        logPlayEvent({ event: 'listen_wav_fallback', title: result.data && result.data.title || null, videoId: null, nudgeMs, errorMessage: result.data && result.data.error || null });
+      }
+    }
+    try { if (sideMuted) side.unMute(); } catch (e) {}
+    const data = result ? result.data : { error: 'nothing recorded' };
+    if (!data || data.error || typeof data.offsetSeconds !== 'number') {
+      CTL.hold = false;
+      say(/no match/i.test(data && data.error || '') ? 'I could not name that one. Try again closer to the speaker.' : 'I could not hear a song clearly. Try again closer to the speaker.');
+      finish();
+      return;
+    }
+    activateMatch(data, true);
+    const bpm = result.localBpm || data.bpm;
+    songBpm.textContent = bpm ? Math.round(bpm) + ' BPM' : '';
+    say('');
+    pow('GOT IT!');
+  } catch (err) {
+    try { if (sideMuted) side.unMute(); } catch (e) {}
+    CTL.hold = false;
+    say('The internet dropped that one. Tap Listen again.');
+  }
+  finish();
+}
+listenBtn.addEventListener('click', startListen);
+
+/* ===== player time tracking: every fresh time report becomes (video seconds minus clock seconds) ===== */
+const PT = { samples: [], lastV: null, rate: 1 };
+function ptReset() { PT.samples = []; PT.lastV = null; }
+function ptSample(v, w) {
+  if (PT.rate !== 1 || playerState !== 1 || typeof v !== 'number' || v === PT.lastV) return;
+  PT.lastV = v;
+  PT.samples.push({ w, o: v - w });
+  while (PT.samples.length && w - PT.samples[0].w > 4) PT.samples.shift();
+}
+function ptLine() {
+  const n = PT.samples.length;
+  if (n < 3 || PT.samples[n - 1].w - PT.samples[0].w < 0.6) return null;
+  const s = PT.samples.map(x => x.o).sort((a, b) => a - b);
+  return s[Math.floor(0.8 * (n - 1))];
+}
+window.addEventListener('message', (e) => {
+  if (!/^https:\/\/www\.youtube(-nocookie)?\.com$/.test(e.origin)) return;
+  try { if (!player || !player.getIframe || e.source !== player.getIframe().contentWindow) return; } catch (err) { return; }
+  let d = e.data;
+  if (typeof d === 'string') { try { d = JSON.parse(d); } catch (err) { return; } }
+  if (d && d.info && typeof d.info.currentTime === 'number') ptSample(d.info.currentTime, perfS());
+});
+setInterval(() => {
+  try { if (playerReady && player && playerState === 1 && typeof player.getCurrentTime === 'function') ptSample(player.getCurrentTime(), perfS()); } catch (e) {}
+}, 100);
+
+/* ===== ear lock and the control loop =====
+   The phone plays its copy a few seconds late on purpose, hears that copy through its own mic,
+   matches it against what the room played moments earlier, and moves the copy by the measured gap.
+   The control loop then holds the player on that line with small speed changes. */
+const CTL = { oT: null, phase: 'idle', phaseAt: 0, slewTimer: null, seekLat: lsNum('songsync:seeklat', 0.35), seekPending: false, rateOk: null, cal: null, hold: false, lastAud: { vid: null, at: -1e9 }, err: null };
+function baseList() { try { const a = JSON.parse(localStorage.getItem('songsync:earbase') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function basePush(ms) { const a = baseList(); a.unshift(Math.round(ms)); try { localStorage.setItem('songsync:earbase', JSON.stringify(a.slice(0, 15))); } catch (e) {} }
+function earOn() { return $('earToggle').checked && earReady(); }
+function applyLine() { if (current && typeof current.nomO === 'number') CTL.oT = current.nomO + nudgeMs / 1000 + (current.corr || 0); }
+function setNominal(fresh) {
+  const nom = position() - perfS();
+  if (fresh || !current.noms) { current.noms = [nom]; current.nomO = nom; }
+  else if (!current.ear) { current.noms.push(nom); current.nomO = current.noms.reduce((a, b) => a + b, 0) / current.noms.length; }
+  applyLine();
+}
+function primeSong(song) {
+  const b = baseList();
+  song.corr = b.length ? median(b) / 1000 : 0;
+  song.corrSrc = b.length ? 'base' : 'none';
+  setNominal(true);
+  const c = new AbortController();
+  setTimeout(() => c.abort(), 2500);
+  fetch('/api/video-offset?v=' + encodeURIComponent(song.videoId), { signal: c.signal, cache: 'no-store' }).then(r => r.json()).then(d => {
+    if (!d || typeof d.offsetMs !== 'number' || current !== song || song.ear) return;
+    song.corr = d.offsetMs / 1000; song.corrSrc = 'learned';
+    applyLine();
+  }).catch(() => {});
+}
+function earLog(obj) {
+  let lat = {};
+  try { lat = { baseLatency: EAR.ctx ? EAR.ctx.baseLatency : null, outputLatency: EAR.ctx ? EAR.ctx.outputLatency : null }; } catch (e) {}
+  try {
+    fetch('/api/sync-samples', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(Object.assign({ source: 'offset-listener-v2', deviceId, wall: Date.now(), sr: EAR.sr, title: current ? current.title : null, artist: current ? current.artist : null,
+        videoId: current ? current.videoId : null, nudgeMs, seekLat: +CTL.seekLat.toFixed(3), rateOk: CTL.rateOk, ua: navigator.userAgent.slice(0, 120) }, lat, obj)) }).catch(() => {});
+  } catch (e) {}
+}
+function startCal(delta) {
+  if (!current || !current.videoId || current.hostOnly || !earOn() || CTL.cal) return;
+  const now = perfS();
+  const sameAudible = CTL.lastAud.vid === current.videoId;
+  if (sameAudible && playerState === 1 && !CTL.hold) return;
+  const refFrom = Math.max(sameAudible ? CTL.lastAud.at + 0.3 : -1e9, earOldestPerf() + 0.2);
+  CTL.cal = { stage: 'hush', delta, started: now, refFrom, hushUntil: Math.max(now, refFrom + delta + 1.7), audibleFrom: null, t0: null };
+  current.ear = false;
+  renderStamp();
+}
+function endCal() { CTL.cal = null; renderStamp(); }
+async function calCompute() {
+  const cal = CTL.cal, song = current;
+  cal.stage = 'compute';
+  const report = { kind: 'ear_cal', delta: cal.delta, result: 'fail' };
+  try {
+    const oCal = cal.oLine;
+    const seg = earSlice(cal.t0 - EAR_LOOKBACK, cal.t0 + EAR_WIN);
+    if (!seg) throw new Error('no mic audio');
+    const feats = await earFeatures(seg.data, EAR.sr);
+    const fr = (t) => Math.round((t - seg.startPerf) / EAR_HOP);
+    const a0 = fr(cal.t0), M = Math.min(Math.round(EAR_WIN / EAR_HOP), feats[0].length - a0);
+    if (M < 250) throw new Error('clip too short');
+    const refLo = Math.max(1, fr(cal.refFrom)), refHi = Math.min(a0, fr(cal.audibleFrom));
+    const peaks = earMatch(feats, a0, M, refLo, refHi, 60, a0);
+    const kExp = (CTL.oT - nudgeMs / 1000 - oCal) / EAR_HOP;
+    const sr = EAR.sr, s0 = (cal.t0 - seg.startPerf) * sr;
+    const lvlClip = earRms(seg.data, s0, s0 + EAR_WIN * sr);
+    const lvlRoom = earRms(seg.data, Math.max(refLo * EAR_HOP * sr, (refHi * EAR_HOP - EAR_WIN) * sr), refHi * EAR_HOP * sr);
+    report.peaks = peaks.slice(0, 5).map(p => ({ lagMs: Math.round(p.k * EAR_HOP * 1000), z: +p.z.toFixed(1) }));
+    report.expectedMs = Math.round(kExp * EAR_HOP * 1000);
+    report.rise = lvlRoom > 0 ? +(lvlClip / lvlRoom).toFixed(2) : null;
+    report.refSec = +((refHi - refLo) * EAR_HOP).toFixed(1);
+    if (!peaks.length || peaks[0].z < EAR_ZMIN) throw new Error('no clear match');
+    if (!(lvlRoom > 0) || lvlClip / lvlRoom < 1.15) throw new Error('phone copy not heard by the mic');
+    const strong = peaks.filter(p => p.z >= Math.max(EAR_ZMIN, 0.75 * peaks[0].z));
+    strong.sort((p, q) => Math.abs(p.k - kExp) - Math.abs(q.k - kExp));
+    const lag = strong[0].k * EAR_HOP;
+    const corr = oCal + lag - song.nomO;
+    if (Math.abs(corr) > 28) throw new Error('gap too large');
+    if (current !== song || CTL.cal !== cal) return;
+    report.result = 'locked';
+    report.lagMs = Math.round(lag * 1000);
+    report.fixMs = Math.round((lag - kExp * EAR_HOP) * 1000);
+    report.corrMs = Math.round(corr * 1000);
+    report.priorMs = Math.round((song.corr || 0) * 1000);
+    report.priorSrc = song.corrSrc;
+    report.z = +strong[0].z.toFixed(1);
+    nudgeMs = 0;
+    song.corr = corr; song.ear = true; song.corrSrc = 'ear';
+    basePush(corr * 1000);
+    endCal();
+    applyLine();
+    pow('SNAP!');
+    fetch('/api/video-offset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ videoId: song.videoId, offsetMs: Math.round(corr * 1000), title: song.title, deviceId }) }).catch(() => {});
+  } catch (err) {
+    report.reason = String(err && err.message || err);
+    if (CTL.cal === cal) endCal();
+  }
+  earLog(report);
+}
+function ctlSeek(t) {
+  if (CTL.slewTimer) { clearTimeout(CTL.slewTimer); CTL.slewTimer = null; }
+  try { if (PT.rate !== 1) player.setPlaybackRate(1); } catch (e) {}
+  PT.rate = 1;
+  player.seekTo(Math.max(0, t + CTL.seekLat), true);
+  player.playVideo();
+  player.unMute();
+  CTL.phase = 'seeking'; CTL.phaseAt = perfS(); CTL.seekPending = true;
+  ptReset();
+}
+function ctlTick() {
+  if (!playerReady || !player || typeof player.seekTo !== 'function') return;
+  const now = perfS();
+  if (playerState === 1 && loadedVideo) CTL.lastAud = { vid: loadedVideo, at: now };
+  const cal = CTL.cal, want = wantAudio();
+  if (!want || (cal && cal.stage === 'hush' && now < cal.hushUntil)) {
+    if (playerState === 1 || playerState === 3) { try { player.pauseVideo(); } catch (e) {} }
+    if (!want && cal && !CTL.hold) endCal();
+    CTL.phase = 'idle';
+    return;
+  }
+  if (cal && now - cal.started > cal.delta + 40) { endCal(); earLog({ kind: 'ear_cal', result: 'fail', reason: 'timed out' }); return; }
+  if (cal && cal.stage === 'hush') { cal.stage = 'preroll'; renderStamp(); }
+  const pre = cal ? cal.delta : 0;
+  const t = CTL.oT - pre + now;
+  if (current.durationSeconds && CTL.oT + now > current.durationSeconds + 1) { try { player.pauseVideo(); } catch (e) {} if (cal) endCal(); return; }
+  if (CTL.rateOk === null) { try { const r = player.getAvailablePlaybackRates(); if (r && r.length) CTL.rateOk = r.indexOf(1.25) >= 0 && r.indexOf(0.75) >= 0; } catch (e) {} }
+
+  if (loadedVideo !== current.videoId) {
+    loadedVideo = current.videoId;
+    if (cal && cal.audibleFrom === null) cal.audibleFrom = now;
+    try { player.unMute(); player.setVolume(100); if (PT.rate !== 1) player.setPlaybackRate(1); } catch (e) {}
+    PT.rate = 1;
+    player.loadVideoById({ videoId: current.videoId, startSeconds: Math.max(0, t + 1) });
+    CTL.phase = 'loading'; CTL.phaseAt = now; CTL.seekPending = false;
+    ptReset();
+    return;
+  }
+  if (playerState !== 1) {
+    if ((CTL.phase === 'loading' || CTL.phase === 'seeking') && now - CTL.phaseAt < 6) return;
+    if (cal && cal.audibleFrom === null) cal.audibleFrom = now;
+    ctlSeek(t);
+    return;
+  }
+  if (CTL.phase === 'slew') return;
+  const o = ptLine();
+  if (o === null) return;
+  const e = (CTL.oT - pre) - o;
+  CTL.err = e;
+  if (CTL.seekPending) {
+    CTL.seekPending = false;
+    if (Math.abs(e) < 2.5) { CTL.seekLat = Math.max(0, Math.min(2.5, CTL.seekLat + 0.7 * e)); lsSet('songsync:seeklat', CTL.seekLat.toFixed(3)); }
+  }
+  if (cal) {
+    if (cal.stage !== 'preroll') return;
+    if (Math.abs(e) > 3.5) { if (cal.audibleFrom === null) cal.audibleFrom = now; cal.t0 = null; ctlSeek(t); return; }
+    if (cal.audibleFrom === null) cal.audibleFrom = now;
+    if (cal.t0 === null) { cal.t0 = now; return; }
+    if (now >= cal.t0 + EAR_WIN + 0.45) { cal.oLine = o; calCompute(); }
+    return;
+  }
+  if (Math.abs(e) > 1 || (!CTL.rateOk && Math.abs(e) > 0.12)) { ctlSeek(t); return; }
+  if (Math.abs(e) > 0.02 && CTL.rateOk) {
+    const rate = e > 0 ? 1.25 : 0.75;
+    try { player.setPlaybackRate(rate); } catch (err) { CTL.rateOk = false; return; }
+    PT.rate = rate; CTL.phase = 'slew';
+    CTL.slewTimer = setTimeout(() => {
+      CTL.slewTimer = null;
+      try { player.setPlaybackRate(1); } catch (err) {}
+      PT.rate = 1; CTL.phase = 'settle'; ptReset();
+    }, Math.max(60, Math.abs(e) / 0.25 * 1000));
+    return;
+  }
+  CTL.phase = 'hold';
+}
+setInterval(ctlTick, 150);
+setInterval(renderStamp, 500);
+
+/* ===== the three buttons ===== */
+$('syncPauseBtn').addEventListener('click', () => {
+  if (!current || !current.videoId || current.hostOnly) return;
+  audioOn = !audioOn;
+  if (audioOn) {
+    unlockAudio();
+    if (!current.ear && !(CTL.lastAud.vid === current.videoId && perfS() - CTL.lastAud.at < 12)) startCal(10);
+  } else if (CTL.cal) endCal();
+  renderStamp();
+  ctlTick();
+});
+function nudge(deltaMs) {
+  if (!current || !current.videoId) return;
+  nudgeMs += deltaMs;
+  applyLine();
+  ctlTick();
+}
+$('nudgeBack').addEventListener('click', () => nudge(-500));
+$('nudgeForward').addEventListener('click', () => nudge(500));
+
+/* ===== settings ===== */
+try { if (localStorage.getItem('songsync:ear') === '0') $('earToggle').checked = false; } catch (e) {}
+$('earToggle').addEventListener('change', (e) => { lsSet('songsync:ear', e.target.checked ? 1 : 0); if (!e.target.checked && CTL.cal) endCal(); });
+try { if (localStorage.getItem('songsync:follow') === '1') $('followToggle').checked = true; } catch (e) {}
+$('followToggle').addEventListener('change', (e) => lsSet('songsync:follow', e.target.checked ? 1 : 0));
+let followAt = 0;
+setInterval(() => {
+  if (!$('followToggle').checked || listening || !current || current.hostOnly || !EAR.stream) return;
+  const dur = current.durationSeconds;
+  if (!(typeof dur === 'number' && dur > 0)) return;
+  if (position() > dur + 4 && Date.now() - followAt > 25000) { followAt = Date.now(); startListen(); }
+}, 2000);
+
+function reportActivePosition() {
+  let title = null, videoId = null, pos = null, paused = false;
+  if (broadcasting && hostPlayer && chosenVideo) { title = chosenVideo.title; videoId = chosenVideo.videoId; pos = hostPlayer.getCurrentTime(); }
+  else if (current && current.videoId && !current.hostOnly && playerReady && loadedVideo === current.videoId && (playerState === 1 || !audioOn)) {
+    title = current.title; videoId = current.videoId; paused = !audioOn;
+    try { pos = player.getCurrentTime(); } catch (e) { return; }
+  } else if (pendingFeedEntry && feedPlayerReady && feedPlayer) { title = pendingFeedEntry.title; videoId = pendingFeedEntry.videoId; pos = feedPlayer.getCurrentTime(); paused = feedPaused; }
+  else return;
+  fetch('/api/positions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deviceId, title, videoId, position: pos, paused, nudgeMs }) }).catch(() => {});
+}
+setInterval(reportActivePosition, 1500);
+
+/* ===== find a song and broadcast it to nearby phones ===== */
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const searchResults = document.getElementById('searchResults');
+const broadcastPanel = document.getElementById('broadcastPanel');
+const chosenTitle = document.getElementById('chosenTitle');
+const broadcastBtn = document.getElementById('broadcastBtn');
+const broadcastStatus = document.getElementById('broadcastStatus');
+
+let hostPlayer = null;
+let hostPlayerReady = false;
+let chosenVideo = null;
+let broadcasting = false;
+let broadcastTimer = null;
+let broadcastLifetimeTimer = null;
+
+searchBtn.addEventListener('click', runSearch);
+
+async function runSearch() {
+  const q = searchInput.value.trim();
+  if (!q) return;
+  searchResults.innerHTML = 'searching...';
+  try {
+    const res = await fetch('/api/youtube-search?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    if (data.error) {
+      searchResults.innerHTML = 'error: ' + escapeHtml(data.error);
+      return;
+    }
+    renderResults(data.results || []);
+  } catch (err) {
+    searchResults.innerHTML = 'request failed: ' + escapeHtml(String(err));
+  }
+}
+
+function renderResults(results) {
+  if (results.length === 0) {
+    searchResults.innerHTML = 'no results';
+    return;
+  }
+  searchResults.innerHTML = '';
+  results.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'searchItem';
+    row.innerHTML = '<img src="' + (r.thumbnail || '') + '">' +
+      '<div class="meta"><div class="t">' + escapeHtml(r.title) + '</div>' +
+      '<div class="c">' + escapeHtml(r.channel) + '</div></div>';
+    row.addEventListener('click', () => selectVideo(r));
+    searchResults.appendChild(row);
+  });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+function selectVideo(video) {
+  chosenVideo = video;
+  chosenTitle.textContent = video.title;
+  broadcastPanel.style.display = 'block';
+
+  if (broadcastTimer) {
+    clearInterval(broadcastTimer);
+    broadcastTimer = null;
+  }
+
+  if (!hostPlayer) {
+    loadYouTubeApiHost();
+  } else {
+    if (hostPlayerReady) {
+      hostPlayer.cueVideoById(video.videoId);
+      startBroadcast();
+    }
+  }
+}
+
+function loadYouTubeApiHost() {
+  whenYouTubeReady(createHostPlayer);
+}
+
+function createHostPlayer() {
+  if (hostPlayer) return;
+  hostPlayer = new YT.Player('hostPlayer', {
+    height: '180',
+    width: '320',
+    videoId: chosenVideo.videoId,
+    playerVars: { controls: 1 },
+    events: {
+      onReady: () => { hostPlayerReady = true; if (chosenVideo) hostPlayer.cueVideoById(chosenVideo.videoId); startBroadcast(); }
+    }
+  });
+}
+
+broadcastBtn.addEventListener('click', () => {
+  if (!hostPlayerReady) {
+    broadcastStatus.textContent = 'player not ready yet';
+    return;
+  }
+  if (broadcasting) {
+    stopBroadcast();
+  } else {
+    startBroadcast();
+  }
+});
+
+function startBroadcast() {
+  hostPlayer.playVideo();
+  broadcasting = true;
+  broadcastBtn.textContent = 'Stop Broadcasting';
+  broadcastStatus.textContent = 'broadcasting...';
+  activateMatch({
+    title: chosenVideo.title,
+    artist: chosenVideo.channel,
+    videoId: chosenVideo.videoId,
+    offsetSeconds: hostPlayer.getCurrentTime(),
+    epochMs: now(),
+    videoDurationSeconds: null
+  }, true, true);
+  pushAnchor();
+  logBroadcastStart();
+  broadcastTimer = setInterval(pushAnchor, 2000);
+  if (broadcastLifetimeTimer) clearTimeout(broadcastLifetimeTimer);
+  broadcastLifetimeTimer = setTimeout(() => {
+    if (broadcasting) {
+      stopBroadcast();
+      broadcastStatus.textContent = 'stopped automatically after 20 minutes unattended';
+    }
+  }, 1200000);
+}
+
+function stopBroadcast() {
+  broadcasting = false;
+  broadcastBtn.textContent = 'Play and Broadcast';
+  broadcastStatus.textContent = 'stopped';
+  if (broadcastTimer) clearInterval(broadcastTimer);
+  if (broadcastLifetimeTimer) clearTimeout(broadcastLifetimeTimer);
+}
+
+async function pushAnchor() {
+  if (!hostPlayer || !chosenVideo) return;
+  const loc = await getMyLocation();
+  if (!loc) {
+    broadcastStatus.textContent = 'location needed to broadcast, allow location access';
+    return;
+  }
+  const currentTime = hostPlayer.getCurrentTime();
+  const payload = {
+    title: chosenVideo.title,
+    artist: chosenVideo.channel,
+    videoId: chosenVideo.videoId,
+    offsetSeconds: currentTime,
+    epochMs: now(),
+    lat: loc.lat,
+    lng: loc.lng
+  };
+  try {
+    await fetch('/api/anchor', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    broadcastStatus.textContent = 'broadcast failed, retrying next cycle';
+  }
+}
+
+function getCoarseLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          lat: Math.round(pos.coords.latitude * 100) / 100,
+          lng: Math.round(pos.coords.longitude * 100) / 100
+        });
+      },
+      () => resolve(null),
+      { timeout: 4000, maximumAge: 300000 }
+    );
+  });
+}
+
+let myLocationPromise = null;
+function getMyLocation() {
+  if (!myLocationPromise) myLocationPromise = getCoarseLocation();
+  return myLocationPromise;
+}
+
+async function logBroadcastStart() {
+  if (!chosenVideo || !hostPlayer) return;
+  const loc = await getCoarseLocation();
+  try {
+    await fetch('/api/log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: chosenVideo.title,
+        artist: chosenVideo.channel,
+        videoId: chosenVideo.videoId,
+        offsetSeconds: hostPlayer.getCurrentTime(),
+        epochMs: now(),
+        lat: loc ? loc.lat : null,
+        lng: loc ? loc.lng : null
+      })
+    });
+  } catch (err) {}
+}
+
+
+/* ===== menu lists: live positions and nearby broadcasts ===== */
+const positionsList = document.getElementById('positionsList');
+
+async function pollPositions() {
+  try {
+    const res = await fetch('/api/positions', { cache: 'no-store' });
+    const data = await res.json();
+    renderPositions(data.devices || []);
+  } catch (err) {}
+}
+setInterval(pollPositions, 2000);
+
+const nearbyList = document.getElementById('nearbyList');
+
+async function pollNearbyBroadcasts() {
+  try {
+    const res = await fetch('/api/anchor?list=1', { cache: 'no-store' });
+    const data = await res.json();
+    const anchors = (data.anchors || []).filter(a => {
+      if (!a.videoId || typeof a.epochMs !== 'number') return false;
+      return (Date.now() - a.epochMs) < 3600000 && !anchorIsStale(a);
+    });
+
+    let positionsData = [];
+    try {
+      const posRes = await fetch('/api/positions', { cache: 'no-store' });
+      const posJson = await posRes.json();
+      positionsData = posJson.devices || [];
+    } catch (err) {}
+
+    renderNearby(anchors, positionsData);
+  } catch (err) {}
+}
+setInterval(pollNearbyBroadcasts, 3000);
+
+function renderNearby(anchors, positionsData) {
+  if (anchors.length === 0) {
+    nearbyList.innerHTML = '<div class="feedItem fs">no broadcasts active nearby right now</div>';
+    return;
+  }
+  anchors.sort((a, b) => b.epochMs - a.epochMs);
+  nearbyList.innerHTML = '';
+  anchors.forEach(a => {
+    const count = positionsData.filter(d =>
+      d.videoId === a.videoId && (Date.now() - (d.updatedAtEpochMs || 0)) < 60000
+    ).length;
+    const row = document.createElement('div');
+    row.className = 'feedItem';
+    row.innerHTML = '<div class="ft">' + escapeHtml(a.title) + '</div>' +
+      '<div class="fa">' + escapeHtml(a.artist || '') + '</div>' +
+      '<div class="fs">' + (a.geohash || '') + ' region, ' + count + (count === 1 ? ' phone listening' : ' phones listening') + '</div>';
+    row.addEventListener('click', () => activateMatch(a, false));
+    nearbyList.appendChild(row);
+  });
+}
+
+pollPositions();
+
+function renderPositions(devices) {
+  const live = devices.filter(d => (Date.now() - (d.updatedAtEpochMs || 0)) < 60000);
+  if (live.length === 0) {
+    positionsList.innerHTML = '<div class="feedItem fs">no phones reporting right now</div>';
+    return;
+  }
+  live.sort((a, b) => (b.updatedAtEpochMs || 0) - (a.updatedAtEpochMs || 0));
+  positionsList.innerHTML = '';
+  live.forEach(d => {
+    const staleSec = Math.max(0, Math.round((Date.now() - (d.updatedAtEpochMs || 0)) / 1000));
+    const isMe = d.deviceId === deviceId;
+    const row = document.createElement('div');
+    row.className = 'feedItem';
+    if (isMe) row.style.cursor = 'default';
+    const nameColor = isMe ? '#333' : '#1a4fa0';
+    row.innerHTML = '<div style="color:' + nameColor + ';font-weight:bold;">' + escapeHtml(d.deviceId) + (isMe ? ' (this phone)' : '') + '</div>' +
+      '<div class="fa">' + escapeHtml(d.title || '') + (d.paused ? ', paused' : '') + '</div>' +
+      '<div class="fs">' + formatOffset(d.position || 0) + ' · updated ' + staleSec + 's ago · nudge ' +
+      (d.nudgeMs >= 0 ? '+' : '') + (d.nudgeMs / 1000).toFixed(1) + 's</div>';
+    if (!isMe && d.videoId) {
+      row.addEventListener('click', () => {
+        activateMatch({
+          title: d.title,
+          artist: '',
+          videoId: d.videoId,
+          offsetSeconds: d.position || 0,
+          epochMs: d.updatedAtEpochMs,
+          videoDurationSeconds: null
+        }, false);
+      });
+    }
+    positionsList.appendChild(row);
+  });
+}
+
+
+/* ===== menu list: heard across all phones ===== */
+const feedList = document.getElementById('feedList');
+async function pollFeed() {
+  try {
+    const res = await fetch('/api/log', { cache: 'no-store' });
+    const data = await res.json();
+    renderFeed(data.entries || []);
+  } catch (err) {
+    // leave last known feed showing
+  }
+}
+
+let feedDetailsOpen = false;
+function renderFeed(entries) {
+  if (entries.length === 0) {
+    feedList.innerHTML = '<div class="feedItem fs">nothing heard yet</div>';
+    return;
+  }
+  const ONE_HOUR_MS = 3600000;
+  const VISIBLE_COUNT = 5;
+  const nowMs = Date.now();
+
+  const fresh = entries.filter(e => (nowMs - e.epochMs) < ONE_HOUR_MS);
+  const stale = entries.filter(e => (nowMs - e.epochMs) >= ONE_HOUR_MS);
+
+  const recent = fresh.slice(0, VISIBLE_COUNT);
+  const older = fresh.slice(VISIBLE_COUNT).concat(stale);
+
+  feedList.innerHTML = '';
+  if (recent.length === 0) {
+    feedList.innerHTML = '<div class="feedItem fs">nothing heard recently</div>';
+  } else {
+    recent.forEach(e => feedList.appendChild(buildFeedRow(e)));
+  }
+
+  if (older.length > 0) {
+    const details = document.createElement('details');
+    details.style.marginTop = '10px';
+    details.open = feedDetailsOpen;
+    details.addEventListener('toggle', () => { feedDetailsOpen = details.open; });
+    const summary = document.createElement('summary');
+    summary.style.cursor = 'pointer';
+    summary.style.color = '#999';
+    summary.style.fontSize = '0.85rem';
+    summary.textContent = 'earlier (' + older.length + ')';
+    details.appendChild(summary);
+    older.forEach(e => details.appendChild(buildFeedRow(e)));
+    feedList.appendChild(details);
+  }
+}
+
+function buildFeedRow(e) {
+  const row = document.createElement('div');
+  row.className = 'feedItem';
+  const secondsAgo = Math.max(0, Math.round((Date.now() - e.epochMs) / 1000));
+  const locText = (typeof e.lat === 'number' && typeof e.lng === 'number')
+    ? ' · ~' + e.lat.toFixed(2) + ', ' + e.lng.toFixed(2)
+    : '';
+  row.innerHTML = '<div class="ft">' + escapeHtml(e.title) + '</div>' +
+    '<div class="fa">' + escapeHtml(e.artist) + '</div>' +
+    '<div class="fs">' + secondsAgo + 's ago' + locText + '</div>';
+  row.addEventListener('click', () => playFeedEntry(e));
+  return row;
+}
+
+const feedPlayerStatus = document.getElementById('feedPlayerStatus');
+const feedPauseBtn = document.getElementById('feedPauseBtn');
+let feedPlayer = null;
+let feedPlayerReady = false;
+let pendingFeedEntry = null;
+let feedPaused = false;
+
+feedPauseBtn.addEventListener('click', () => {
+  if (!feedPlayer || !feedPlayerReady) return;
+  if (feedPaused) {
+    feedPlayer.playVideo();
+    feedPauseBtn.textContent = 'Pause';
+  } else {
+    feedPlayer.pauseVideo();
+    feedPauseBtn.textContent = 'Resume';
+  }
+  feedPaused = !feedPaused;
+});
+
+function playFeedEntry(entry) {
+  if (!entry.videoId) {
+    feedPlayerStatus.textContent = 'no video linked to this entry';
+    return;
+  }
+  pendingFeedEntry = entry;
+  if (!feedPlayer) {
+    whenYouTubeReady(createFeedPlayer);
+  } else if (feedPlayerReady) {
+    firePendingFeedEntry();
+  }
+}
+
+function createFeedPlayer() {
+  if (feedPlayer) return;
+  feedPlayer = new YT.Player('feedPlayer', {
+    height: '1',
+    width: '1',
+    playerVars: { controls: 0 },
+    events: {
+      onReady: () => { feedPlayerReady = true; firePendingFeedEntry(); }
+    }
+  });
+}
+
+function firePendingFeedEntry() {
+  if (!pendingFeedEntry || !feedPlayerReady) return;
+  const e = pendingFeedEntry;
+  const elapsedSinceHeard = Math.max(0, (Date.now() - e.epochMs) / 1000);
+  const position = (e.offsetSeconds || 0) + elapsedSinceHeard;
+  feedPlayerStatus.textContent = 'playing: ' + e.title + ' by ' + e.artist;
+  feedPlayer.loadVideoById(e.videoId, Math.max(position, 0));
+  feedPauseBtn.style.display = 'inline-block';
+  feedPaused = false;
+  feedPauseBtn.textContent = 'Pause';
+  logPlayEvent({
+    event: 'feed_play',
+    title: e.title,
+    videoId: e.videoId,
+    position: Math.max(position, 0),
+    nudgeMs
+  });
+}
+
+pollFeed();
+setInterval(pollFeed, 3000);
+renderStamp();
+</script>
+  <!-- =====================================================================
+       MOHAVE TECHNOLOGY GROUP // CREATOR SEAL
+       Drop this ONE block into any HTML page, anywhere before </body>
+</html>
