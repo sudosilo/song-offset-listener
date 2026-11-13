@@ -8,6 +8,6 @@ Live at offset-listener.vercel.app.
 
 This app is checked every morning by Control Troll.
 
-Latest change. 2026-10-30, v2026.10.30. Added a Smash Bender relay queue: the app queues a job, a phone takes it and reports back. The queue also carries where each clip starts in its song.
+Latest change. 2026-11-11, v2026.11.11. Added ear lock. The phone hears its own copy of the song against the room and corrects the gap, and a control loop holds the player on the line. Offsets learned for each video are kept. Listen retries as plain audio when the clip is empty or cannot be identified. Version two is now the main build with a simpler comic book look and a left side menu, and the old build stays at /classic. Naming a song is faster, with a type or voice name box, up next chips from the spot history, guesses checked by ear, and an intro archive shared by every phone.
 
 Full history is in CHANGELOG.md.
